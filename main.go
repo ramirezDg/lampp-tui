@@ -72,6 +72,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Acción para config (ejemplo: abrir config)
 				// m.config[m.cursorRow] = "nuevo config"
 			}
+		case "e", "E":
+			// Acción para iniciar servicio
+		case "x", "X":
+			// Acción para detener servicio
+		case "r", "R":
+			// Acción para reiniciar servicio
 		}
 	}
 	return m, nil
