@@ -108,33 +108,30 @@ func RenderTable(m model) string {
 			configCell = colStyle().Render(config)
 		}
 
-		// Centrar el contenido de cada celda
-		servicioCell = lipgloss.PlaceHorizontal(columnWidth, lipgloss.Center, servicioCell)
-		pidCell = lipgloss.PlaceHorizontal(columnWidth, lipgloss.Center, pidCell)
-		portCell = lipgloss.PlaceHorizontal(columnWidth, lipgloss.Center, portCell)
-		configCell = lipgloss.PlaceHorizontal(columnWidth, lipgloss.Center, configCell)
-
 		rows[i] = lipgloss.JoinHorizontal(lipgloss.Top, servicioCell, pidCell, portCell, configCell)
 	}
 
 	header := lipgloss.JoinHorizontal(lipgloss.Top, leftTitle, pidTitle, portTitle, configTitle)
 	table := lipgloss.JoinVertical(lipgloss.Left, header, lipgloss.JoinVertical(lipgloss.Left, rows...))
 
-	// Centrar la tabla completa en el terminal
-	termWidth := lipgloss.Width(table)
-	centeredTable := lipgloss.PlaceHorizontal(termWidth, lipgloss.Center, table)
+	terminalWidth := lipgloss.Width(lipgloss.NewStyle().Render(table))
+	centeredTable := lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, table)
 
 	return centeredTable
 }
 
-// Helper para truncar o rellenar strings
 func truncateOrPad(s string, width int) string {
 	runes := []rune(s)
-	if len(runes) > width {
+	length := len(runes)
+	if length > width {
 		return string(runes[:width])
 	}
-	for len(runes) < width {
-		runes = append(runes, ' ')
-	}
-	return string(runes)
+	padding := width - length
+	left := padding / 2
+	right := padding - left
+	return fmt.Sprintf("%s%s%s", spaces(left), s, spaces(right))
+}
+
+func spaces(n int) string {
+	return string(make([]rune, n))
 }
