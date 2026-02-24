@@ -78,52 +78,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() tea.View {
-	// Títulos de columnas
-	leftTitle := lipgloss.NewStyle().Bold(true).Underline(true).Width(18).Align(lipgloss.Center).Render("Servicio")
-	pidTitle := lipgloss.NewStyle().Bold(true).Underline(true).Width(10).Align(lipgloss.Center).Render("PID")
-	portTitle := lipgloss.NewStyle().Bold(true).Underline(true).Width(12).Align(lipgloss.Center).Render("Puerto")
-	configTitle := lipgloss.NewStyle().Bold(true).Underline(true).Width(18).Align(lipgloss.Center).Render("Config")
-
-	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Background(lipgloss.Color("7")).Bold(true)
-
-	// Construir filas por servicio
-	rows := make([]string, len(m.choices))
-	for i := range m.choices {
-		// Servicio
-		servicio := m.choices[i]
-		if m.cursorRow == i && m.cursorCol == 0 {
-			servicio = highlight.Render(servicio)
-		}
-		servicioCell := lipgloss.NewStyle().Width(18).Align(lipgloss.Center).Render(servicio)
-
-		// PID
-		pid := fmt.Sprintf("%d", m.pids[i])
-		if m.cursorRow == i && m.cursorCol == 1 {
-			pid = highlight.Render(pid)
-		}
-		pidCell := lipgloss.NewStyle().Width(10).Align(lipgloss.Center).Render(pid)
-
-		// Puerto
-		port := m.ports[i]
-		if m.cursorRow == i && m.cursorCol == 2 {
-			port = highlight.Render(port)
-		}
-		portCell := lipgloss.NewStyle().Width(12).Align(lipgloss.Center).Render(port)
-
-		// Config
-		config := m.config[i]
-		if m.cursorRow == i && m.cursorCol == 3 {
-			config = highlight.Render(config)
-		}
-		configCell := lipgloss.NewStyle().Width(18).Align(lipgloss.Center).Render(config)
-
-		rows[i] = lipgloss.JoinHorizontal(lipgloss.Top, servicioCell, pidCell, portCell, configCell)
-	}
-
-	// Unir títulos y filas
-	header := lipgloss.JoinHorizontal(lipgloss.Top, leftTitle, pidTitle, portTitle, configTitle)
-	content := lipgloss.JoinVertical(lipgloss.Left, header, lipgloss.JoinVertical(lipgloss.Left, rows...))
-
 	terminalWidth, terminalHeight := 80, 24
 	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
 		terminalWidth, terminalHeight = w, h
@@ -132,7 +86,7 @@ func (m model) View() tea.View {
 	centered := lipgloss.Place(
 		terminalWidth, terminalHeight,
 		lipgloss.Center, lipgloss.Center,
-		Title()+"\n"+content+"\n"+TextArea("Logs De Acciones"),
+		Title()+"\n"+RenderTable(m)+"\n"+TextArea("Logs De Acciones"),
 	)
 
 	return tea.NewView(centered + "\n\n" + Footer())
