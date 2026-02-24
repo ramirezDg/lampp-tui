@@ -83,13 +83,33 @@ func (m model) View() tea.View {
 		terminalWidth, terminalHeight = w, h
 	}
 
+	title := lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, Title())
+	table := lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, RenderTable(m))
+
+	optionLabels := []string{"[e] Start", "[x] Stop", "[r] Restart"}
+	optionStyle := lipgloss.NewStyle().Padding(0, 4).Align(lipgloss.Center)
+	optionRow := ""
+	for i, label := range optionLabels {
+		option := optionStyle.Render(label)
+		if i < len(optionLabels)-1 {
+			optionRow += option + " "
+		} else {
+			optionRow += option
+		}
+	}
+	optionsCentered := lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, optionRow)
+
+	logs := lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, TextArea("Logs De Acciones"))
+
+	content := title + "\n" + table + "\n" + optionsCentered + "\n" + logs
+
 	centered := lipgloss.Place(
 		terminalWidth, terminalHeight,
 		lipgloss.Center, lipgloss.Center,
-		Title()+"\n"+RenderTable(m),
+		content,
 	)
 
-	return tea.NewView(centered + "\n\n" + TextArea("Logs De Acciones") + "\n\n" + Footer())
+	return tea.NewView(centered + "\n\n" + Footer())
 }
 
 func main() {
