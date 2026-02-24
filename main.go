@@ -45,7 +45,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursorCol--
 			}
 		case "right", "d", "D", "→":
-			if m.cursorCol < 2 { // Solo 3 columnas seleccionables
+			if m.cursorCol < 3 {
 				m.cursorCol++
 			}
 		case "up", "w", "W", "↑":
@@ -86,10 +86,10 @@ func (m model) View() tea.View {
 	centered := lipgloss.Place(
 		terminalWidth, terminalHeight,
 		lipgloss.Center, lipgloss.Center,
-		Title()+"\n"+RenderTable(m)+"\n"+TextArea("Logs De Acciones"),
+		Title()+"\n"+RenderTable(m),
 	)
 
-	return tea.NewView(centered + "\n\n" + Footer())
+	return tea.NewView(centered + "\n\n" + TextArea("Logs De Acciones") + "\n\n" + Footer())
 }
 
 func main() {

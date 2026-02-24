@@ -44,10 +44,10 @@ func TextArea(content string) string {
 func Footer() string {
 	footerStyle := lipgloss.NewStyle().
 		Foreground(colorText).
-		Align(lipgloss.Center).
+		Align(lipgloss.Left).
 		MarginTop(-6)
 
-	footerText := "[q, ctrl+c] quit | [↑, w, k] up | [↓, s, j] down | [enter, space] toggle state"
+	footerText := "← / ↑ / → / ↓ - Navigate | Enter - Action | q - Quit\na / w / s / d - Navigate | Space - Action\nPress 'h' for help"
 
 	return footerStyle.Render(footerText)
 }
