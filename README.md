@@ -15,10 +15,37 @@
   - `←/→/a/d`: Cambiar de columna  
   - `Enter`/`Espacio`: Cambiar estado o activar acción según la columna
 
-## Estructura del código
 
-- **main.go**: Lógica principal de la TUI, manejo de eventos de teclado, renderizado de la tabla y navegación.
-- **ui.go**: Funciones auxiliares para el diseño visual (banner, cajas, área de texto, pie de página).
+## Estructura recomendada de carpetas
+
+```
+lampp-tui/
+├── main.go           # Lógica principal de la TUI
+├── ui.go             # Funciones visuales y helpers
+├── go.mod / go.sum   # Dependencias
+├── README.md         # Documentación principal
+├── docs/             # Documentación avanzada
+│   └── README.md
+├── internal/         # (Opcional) Código interno reutilizable
+└── assets/           # (Opcional) Recursos estáticos (imágenes, ejemplos)
+```
+
+Puedes crear las carpetas `internal/` y `assets/` si tu proyecto crece o necesitas organizar mejor el código y recursos.
+
+## Versionado
+
+Este proyecto sigue [SemVer](https://semver.org/lang/es/) para el control de versiones. Usa etiquetas Git para marcar lanzamientos:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Consulta el historial de versiones en la sección de [Releases](https://github.com/ramirezDg/lampp-tui/releases) de GitHub.
+
+## Documentación avanzada
+
+Encuentra más detalles en [docs/README.md](docs/README.md).
 
 ## Ejemplo de uso
 
