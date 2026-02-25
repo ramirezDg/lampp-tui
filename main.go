@@ -118,9 +118,19 @@ func (m Model) View() tea.View {
 }
 
 func main() {
-	p := tea.NewProgram(initialModel())
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
-		os.Exit(1)
+	result := Validate()
+	// TODO: Delete "!" for testing
+	if !result.Installed {
+		p := tea.NewProgram(initialModel())
+		if _, err := p.Run(); err != nil {
+			fmt.Printf("Alas, there's been an error: %v", err)
+			os.Exit(1)
+		}
+	} else {
+		p := tea.NewProgram(initialModelValidation())
+		if _, err := p.Run(); err != nil {
+			fmt.Printf("Error: %v", err)
+			os.Exit(1)
+		}
 	}
 }

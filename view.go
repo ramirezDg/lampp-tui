@@ -23,11 +23,11 @@ type ValidationResult struct {
 }
 
 func isLAMPInstalled() bool {
-	services := []string{
-		"/usr/sbin/apache2",
-		"/usr/bin/mysql",
-		"/usr/sbin/vsftpd",
-	}
+		services := []string{
+			"/opt/lampp/apache2",
+			"/opt/lampp/mysql",
+			"/opt/lampp/sbin/proftpd",
+		}
 	for _, path := range services {
 		if _, err := os.Stat(path); err != nil {
 			return false
@@ -93,7 +93,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() tea.View {
-
 	terminalWidth, terminalHeight := 80, 24
 	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
 		terminalWidth, terminalHeight = w, h
@@ -102,6 +101,22 @@ func (m model) View() tea.View {
 	title := lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, Title())
 
 	content := title
+
+	installed := Validate()
+	if !installed.Installed {
+	} else {
+		gray := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+		content += "\n\n" + gray.Render("Welcome to XAMPP-TUI.") + "\n"
+		content += gray.Render("XAMPP is not installed on your system.") + "\n\n"
+		if osName == "linux" {
+			content += gray.Render("Options:") + "\n"
+			content += gray.Render("  [I]nstall XAMPP") + "\n"
+			content += gray.Render("  [Q]uit/exit") + "\n"
+		} else {
+			content += gray.Render("Options:") + "\n"
+			content += gray.Render("  [Q]uit/exit") + "\n"
+		}
+	}
 
 	centered := lipgloss.Place(
 		terminalWidth, terminalHeight,
