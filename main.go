@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"os"
 
-	"golang.org/x/term"
-
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 )
 
-type model struct {
+type Model struct {
 	choices   []string
 	pids      []int
 	ports     []string
@@ -20,8 +19,8 @@ type model struct {
 	status    []string // "running" or "stopped"
 }
 
-func initialModel() model {
-	return model{
+func initialModel() Model {
+	return Model{
 		choices: []string{"Apache", "MySql", "FTP"},
 		pids:    []int{0, 0, 0},
 		ports:   []string{"", "", ""},
@@ -30,11 +29,11 @@ func initialModel() model {
 	}
 }
 
-func (m model) Init() tea.Cmd {
+func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -83,7 +82,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) View() tea.View {
+func (m Model) View() tea.View {
 	terminalWidth, terminalHeight := 80, 24
 	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
 		terminalWidth, terminalHeight = w, h
