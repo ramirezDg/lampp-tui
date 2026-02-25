@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -156,4 +157,87 @@ func truncateOrPad(s string, width int) string {
 
 func spaces(n int) string {
 	return string(make([]rune, n))
+}
+
+
+func InstalarXAMPP() error {
+	// Obtiene las versiones disponibles de XAMPP
+	cmdVersiones := exec.Command("bash", "-c", "curl -s https://www.apachefriends.org/download.html | grep -oP 'xampp-linux-x64-\\K[0-9.]+' | sort -V | uniq")
+	out, err := cmdVersiones.Output()
+	if err != nil {
+		return fmt.Errorf("error al obtener versiones de XAMPP: %v", err)
+	}
+	versiones := string(out)
+	fmt.Println("Versiones disponibles de XAMPP:")
+	fmt.Println(versiones)
+	fmt.Print("Ingrese la versión que desea instalar: ")
+	var version string
+	fmt.Scanln(&version)
+	url := fmt.Sprintf("https://www.apachefriends.org/xampp-files/%s/xampp-linux-x64-%s-0-installer.run", version, version)
+	// Descarga el instalador
+	cmdDescarga := exec.Command("wget", url, "-O", "xampp-installer.run")
+	cmdDescarga.Stdout = nil
+	cmdDescarga.Stderr = nil
+	if err := cmdDescarga.Run(); err != nil {
+		return fmt.Errorf("error al descargar XAMPP: %v", err)
+	}
+	// Da permisos de ejecución
+	cmdPermisos := exec.Command("chmod", "+x", "xampp-installer.run")
+	if err := cmdPermisos.Run(); err != nil {
+		return fmt.Errorf("error al dar permisos: %v", err)
+	}
+	// Ejecuta el instalador con sudo
+	cmdInstalar := exec.Command("sudo", "./xampp-installer.run")
+	cmdInstalar.Stdout = nil
+	cmdInstalar.Stderr = nil
+	if err := cmdInstalar.Run(); err != nil {
+		return fmt.Errorf("error al instalar XAMPP: %v", err)
+	}
+	return nil
+}
+
+// Instala XAMPP con la versión seleccionada
+func InstalarXAMPPConVersion(version string) error {
+	url := fmt.Sprintf("https://www.apachefriends.org/xampp-files/%s/xampp-linux-x64-%s-0-installer.run", version, version)
+	cmdDescarga := exec.Command("wget", url, "-O", "xampp-installer.run")
+	if err := cmdDescarga.Run(); err != nil {
+		return fmt.Errorf("error al descargar XAMPP: %v", err)
+	}
+	cmdPermisos := exec.Command("chmod", "+x", "xampp-installer.run")
+	if err := cmdPermisos.Run(); err != nil {
+		return fmt.Errorf("error al dar permisos: %v", err)
+	}
+	cmdInstalar := exec.Command("sudo", "./xampp-installer.run")
+	if err := cmdInstalar.Run(); err != nil {
+		return fmt.Errorf("error al instalar XAMPP: %v", err)
+	}
+	return nil
+}
+
+func getXAMPPVersions() []string {
+	cmd := exec.Command("bash", "-c", "curl -s https://www.apachefriends.org/download.html | grep -oP 'xampp-linux-x64-\\K[0-9.]+' | sort -V | uniq")
+	out, err := cmd.Output()
+	if err != nil {
+		return []string{"Error al obtener versiones"}
+	}
+	return splitLines(string(out))
+}
+
+func splitLines(s string) []string {
+	var res []string
+	curr := ""
+	for _, c := range s {
+		if c == '\n' {
+			if curr != "" {
+				res = append(res, curr)
+				curr = ""
+			}
+		} else {
+			curr += string(c)
+		}
+	}
+	if curr != "" {
+		res = append(res, curr)
+	}
+	return res
 }

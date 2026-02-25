@@ -10,9 +10,13 @@ import (
 )
 
 type model struct {
-	osName    string
-	installed bool
-	status	[]string
+	osName           string
+	installed        bool
+	status           []string
+	showVersionList  bool
+	versiones        []string
+	selectedVersion  int
+	installing       bool
 }
 
 var osName = runtime.GOOS
@@ -23,11 +27,11 @@ type ValidationResult struct {
 }
 
 func isLAMPInstalled() bool {
-		services := []string{
-			"/opt/lampp/apache2",
-			"/opt/lampp/mysql",
-			"/opt/lampp/sbin/proftpd",
-		}
+	services := []string{
+		"/opt/lampp/apache2",
+		"/opt/lampp/mysql",
+		"/opt/lampp/sbin/proftpd",
+	}
 	for _, path := range services {
 		if _, err := os.Stat(path); err != nil {
 			return false
@@ -79,14 +83,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c", "q", "Q":
 			return m, tea.Quit
-		case "e", "E":
-			// Acción para iniciar servicio
-		case "x", "X":
-			// Acción para detener servicio
-		case "r", "R":
-			// Acción para reiniciar servicio
+		case "i", "I":
+			m.showVersionList = true
+			m.installing = false
+			m.versiones = getXAMPPVersions()
+			m.selectedVersion = 0
+			return m, nil
+		case "up", "k":
+			if m.showVersionList && m.selectedVersion > 0 {
+				m.selectedVersion--
+			}
+		case "down", "j":
+			if m.showVersionList && m.selectedVersion < len(m.versiones)-1 {
+				m.selectedVersion++
+			}
+		case "enter":
+			if m.showVersionList && len(m.versiones) > 0 {
+				m.installing = true
+				go func(version string) {
+					InstalarXAMPPConVersion(version)
+				}(m.versiones[m.selectedVersion])
+			}
 		}
 	}
 	return m, nil
@@ -99,21 +118,31 @@ func (m model) View() tea.View {
 	}
 
 	title := lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, Title())
-
 	content := title
 
-	installed := Validate()
-	if !installed.Installed {
+	if m.showVersionList {
+		content += "\n\n" + lipgloss.NewStyle().Bold(true).Render("Select the XAMPP version:") + "\n"
+		for i, v := range m.versiones {
+			style := lipgloss.NewStyle()
+			if i == m.selectedVersion {
+				style = style.Foreground(lipgloss.Color("#F27127")).Bold(true)
+			}
+			content += style.Render(v) + "\n"
+		}
+		if m.installing {
+			content += "\nInstalando XAMPP...\n"
+		}
 	} else {
+		installed := Validate()
 		gray := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
-		content += "\n\n" + gray.Render("Welcome to XAMPP-TUI.") + "\n"
-		content += gray.Render("XAMPP is not installed on your system.") + "\n\n"
-		if osName == "linux" {
+		if !installed.Installed {
+			content += "\n\n" + gray.Render("Welcome to XAMPP-TUI.") + "\n"
+			content += gray.Render("XAMPP is not installed on your system.") + "\n\n"
 			content += gray.Render("Options:") + "\n"
 			content += gray.Render("  [I]nstall XAMPP") + "\n"
 			content += gray.Render("  [Q]uit/exit") + "\n"
 		} else {
-			content += gray.Render("Options:") + "\n"
+			content += "\n\n" + gray.Render("XAMPP is already installed.") + "\n"
 			content += gray.Render("  [Q]uit/exit") + "\n"
 		}
 	}

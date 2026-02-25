@@ -119,8 +119,7 @@ func (m Model) View() tea.View {
 
 func main() {
 	result := Validate()
-	// TODO: Delete "!" for testing
-	if !result.Installed {
+	if result.Installed {
 		p := tea.NewProgram(initialModel())
 		if _, err := p.Run(); err != nil {
 			fmt.Printf("Alas, there's been an error: %v", err)
