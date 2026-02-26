@@ -1,4 +1,4 @@
-package lampptui
+package main
 
 import (
 	"fmt"
