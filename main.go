@@ -58,10 +58,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", "space":
 			// Solo permitir acción en columna 0 (choices), 1 (port), 2 (config)
 			if m.cursorCol == 0 {
-				// Ejemplo: cambiar status
+				service := m.choices[m.cursorRow]
+				// Mapear a los nombres esperados por ControlXAMPPService
+				var serviceKey string
+				switch service {
+				case "Apache":
+					serviceKey = "apache"
+				case "MySql":
+					serviceKey = "mysql"
+				case "FTP":
+					serviceKey = "ftp"
+				default:
+					serviceKey = service
+				}
 				if m.status[m.cursorRow] == "running" {
+					ControlXAMPPService(serviceKey, "stop")
 					m.status[m.cursorRow] = "stopped"
 				} else {
+					ControlXAMPPService(serviceKey, "start")
 					m.status[m.cursorRow] = "running"
 				}
 			} else if m.cursorCol == 1 {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"runtime"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
@@ -18,8 +17,6 @@ type model struct {
 	selectedVersion  int
 	installing       bool
 }
-
-var osName = runtime.GOOS
 
 type ValidationResult struct {
 	OSName    string
@@ -40,31 +37,12 @@ func isLAMPInstalled() bool {
 	return true
 }
 
-func isXAMPPInstalled() bool {
-	var xamppPath string
-	if runtime.GOOS == "windows" {
-		xamppPath = "C:\\xampp\\xampp-control.exe"
-	} else {
-		xamppPath = "/opt/lampp/xampp"
-	}
-	_, err := os.Stat(xamppPath)
-	return err == nil
-}
+
 
 func Validate() ValidationResult {
-	var installed bool
-
-	switch osName {
-	case "linux":
-		installed = isLAMPInstalled()
-	case "windows":
-		installed = isXAMPPInstalled()
-	default:
-		installed = false
-	}
-
+	installed := isLAMPInstalled()
 	return ValidationResult{
-		OSName:    osName,
+		OSName:    "linux",
 		Installed: installed,
 	}
 }
