@@ -1,4 +1,4 @@
-package main
+package tui
 
 import (
 	"fmt"
@@ -14,16 +14,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Colores globales
 var (
 	colorTitle       = lipgloss.Color("#F27127")
 	colorText        = lipgloss.Color("#333333")
 	colorHighlightFg = lipgloss.Color("#F27127")
 	colorHighlightBg = lipgloss.Color("7")
 )
-
-type progressMsg float64
-
 
 var BannerTitleL = lipgloss.NewStyle().
 	Foreground(colorTitle).
@@ -134,9 +130,26 @@ func RenderTable(m Model) string {
 	return centeredTable
 }
 
-type VersionTableModel struct {
-	Versiones       []string
-	SelectedVersion int
+func Validate() ValidationResult {
+	installed := isLAMPInstalled()
+	return ValidationResult{
+		OSName:    "linux",
+		Installed: installed,
+	}
+}
+
+func isLAMPInstalled() bool {
+	services := []string{
+		"/opt/lampp/apache2",
+		"/opt/lampp/mysql",
+		"/opt/lampp/sbin/proftpd",
+	}
+	for _, path := range services {
+		if _, err := os.Stat(path); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func RenderVersionTable(m VersionTableModel) string {
@@ -409,11 +422,11 @@ func ShowDownloadXAMPP(url string) error {
 		},
 	}
 
-	m := model{
+	m := Model{
 		pw:       pw,
 		progress: progress.New(progress.WithDefaultBlend()),
 	}
-	p = tea.NewProgram(m)
+	p := tea.NewProgram(m)
 	go pw.Start()
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running program: %v", err)

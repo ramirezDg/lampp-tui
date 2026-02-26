@@ -9,12 +9,11 @@
 - **Cambio de estado**: Pulsa `Enter` o `Espacio` sobre un servicio para alternar entre "running" y "stopped".
 - **Área de logs**: Visualiza mensajes o logs de acciones en la parte inferior de la interfaz.
 - **Diseño atractivo**: Usa cajas y estilos para resaltar la información y la selección actual.
-- **Atajos**:  
-  - `q` o `Ctrl+C`: Salir  
-  - `↑/↓/w/s`: Moverse entre servicios  
-  - `←/→/a/d`: Cambiar de columna  
-  - `Enter`/`Espacio`: Cambiar estado o activar acción según la columna
-
+- **Atajos**:
+    - `q` o `Ctrl+C`: Salir
+    - `↑/↓/w/s`: Moverse entre servicios
+    - `←/→/a/d`: Cambiar de columna
+    - `Enter`/`Espacio`: Cambiar estado o activar acción según la columna
 
 ## Estructura recomendada de carpetas
 
@@ -26,9 +25,36 @@ lampp-tui/
 ├── README.md         # Documentación principal
 ├── docs/             # Documentación avanzada
 │   └── README.md
-├── internal/         # (Opcional) Código interno reutilizable
-└── assets/           # (Opcional) Recursos estáticos (imágenes, ejemplos)
+├── assets/                 # Recursos estáticos (imágenes, ejemplos)
+│   └── README.md
+├── cmd/                    # Entrypoints ejecutables
+│   └── lampp-tui/main.go   # main para la TUI
+├── internal/               # Lógica interna no exportada
+│   ├── tui/                # UI y componentes Bubble Tea
+│   │   ├── model.go        # Modelo de estado de la UI
+│   │   ├── update.go       # Lógica de actualización (mensajes)
+│   │   ├── view.go         # Renderizado visual
+│   │   └── styles.go       # Estilos Lipgloss
+│   ├── services/           # Lógica de negocio y servicios
+│   │   ├── downloader.go   # Descarga de archivos
+│   │   ├── http_client.go  # Cliente HTTP reutilizable
+│   │   ├── xampp.go        # Control y estado de XAMPP
+│   │   └── version_fetcher.go # Obtención de versiones XAMPP
+│   └── state/              # Estado global (opcional)
+│       └── app_state.go
+└── docs/                   # Documentación avanzada
+   └── README.md
 ```
+
+Esta estructura sigue las mejores prácticas de Go y Bubble Tea:
+
+- Separación clara entre UI, servicios y estado.
+- Lógica de UI en `internal/tui/`.
+- Lógica de negocio y servicios en `internal/services/`.
+- Entrypoint limpio en `cmd/`.
+- Recursos y documentación organizados.
+
+Puedes extender `internal/` para más módulos o componentes si tu proyecto crece.
 
 Puedes crear las carpetas `internal/` y `assets/` si tu proyecto crece o necesitas organizar mejor el código y recursos.
 
@@ -53,10 +79,10 @@ Al ejecutar el programa, verás una tabla como esta:
 
 ```
 Servicio           PID        Puerto      Config
-╭───────────────╮  0         80          httpd.conf
-│    Apache     │  0         3306        my.ini
-│   stopped     │  0         21          vsftpd.conf
-╰───────────────╯
+Apache             0          80          httpd.conf
+MySql              0          3306        my.ini
+FTP                0          21          vsftpd.conf
+
 ...
 Logs De Acciones
 [q, ctrl+c] quit | [↑, w, k] up | [↓, s, j] down | [enter, space] toggle state
@@ -66,25 +92,25 @@ Logs De Acciones
 
 - Go 1.18 o superior
 - Linux (probado en terminal)
-- Dependencias:  
-  - [Bubble Tea](https://github.com/charmbracelet/bubbletea)  
-  - [Lipgloss](https://github.com/charmbracelet/lipgloss)
+- Dependencias:
+    - [Bubble Tea](https://github.com/charmbracelet/bubbletea)
+    - [Lipgloss](https://github.com/charmbracelet/lipgloss)
 
 ## Instalación
 
 1. Clona el repositorio:
-   ```bash
-   git clone https://github.com/ramirezDg/lampp-tui.git
-   cd lampp-tui
-   ```
+    ```bash
+    git clone https://github.com/ramirezDg/lampp-tui.git
+    cd lampp-tui
+    ```
 2. Instala dependencias:
-   ```bash
-   go mod tidy
-   ```
+    ```bash
+    go mod tidy
+    ```
 3. Ejecuta la aplicación:
-   ```bash
-   go run main.go ui.go
-   ```
+    ```bash
+    go run main.go ui.go
+    ```
 
 ## Personalización
 

@@ -1,4 +1,4 @@
-module lampp-tui
+module xampp-tui
 
 go 1.24.2
 
