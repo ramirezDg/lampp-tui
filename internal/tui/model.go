@@ -31,33 +31,39 @@ type VersionTableModel struct {
 }
 
 type Model struct {
-	choices            []string
-	pids               []int
-	ports              []string
-	config             []string
-	cursorRow          int
-	cursorCol          int
-	status             []string
-	statusInstallation []string
-	ShowNewView        bool
-	osName             string
-	installed          bool
-	showVersionList    bool
-	versiones          []string
-	selectedVersion    int
-	installing         bool
-	pw                 *progressWriter
-	progress           progress.Model
+	choices             []string
+	pids                []int
+	ports               []string
+	config              []string
+	cursorRow           int
+	cursorCol           int
+	status              []string
+	statusInstallation  []string
+	ShowNewView         bool
+	osName              string
+	installed           bool
+	showVersionList     bool
+	versiones           []string
+	selectedVersion     int
+	installing          bool
+	pw                  *progressWriter
+	progress            progress.Model
+	optionsInstallation []string
+	cursorInstall       int
+	cursorVersion       int
 }
 
 func InitialModel() Model {
+	ShowNewView := Validate().Installed
 	return Model{
-		choices:            []string{"Apache", "MySql", "FTP"},
-		pids:               []int{0, 0, 0},
-		ports:              []string{"", "", ""},
-		config:             []string{"httpd.conf", "my.ini", "vsftpd.conf"},
-		status:             []string{"stopped", "stopped", "stopped"},
-		statusInstallation: []string{"Not Installed", "Installed"},
+		choices:             []string{"Apache", "MySql", "FTP"},
+		pids:                []int{0, 0, 0},
+		ports:               []string{"", "", ""},
+		config:              []string{"httpd.conf", "my.ini", "vsftpd.conf"},
+		status:              []string{"stopped", "stopped", "stopped"},
+		statusInstallation:  []string{"Not Installed", "Installed"},
+		ShowNewView:         ShowNewView,
+		optionsInstallation: []string{"Install XAMPP", "Quit/Exit"},
 	}
 }
 

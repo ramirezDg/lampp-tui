@@ -12,6 +12,8 @@ import (
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
+
+	"xampp-tui/internal/services"
 )
 
 var (
@@ -60,6 +62,29 @@ func Footer() string {
 	footerText := "← / ↑ / → / ↓ - Navigate | Enter - Action | q - Quit\na / w / s / d - Navigate | Space - Action\nPress 'h' for help"
 
 	return footerStyle.Render(footerText)
+}
+
+func RenderTitle(width int) string {
+	return lipgloss.PlaceHorizontal(width, lipgloss.Center, Title())
+}
+
+func RenderFooter(width int) string {
+	return lipgloss.PlaceHorizontal(width, lipgloss.Left, Footer())
+}
+
+func RenderOptions(width int) string {
+	optionLabels := []string{"[e] Start", "[x] Stop", "[r] Restart"}
+	optionStyle := lipgloss.NewStyle().Padding(0, 4).Align(lipgloss.Center)
+	optionRow := ""
+	for i, label := range optionLabels {
+		option := optionStyle.Render(label)
+		if i < len(optionLabels)-1 {
+			optionRow += option + " "
+		} else {
+			optionRow += option
+		}
+	}
+	return lipgloss.PlaceHorizontal(width, lipgloss.Center, optionRow)
 }
 
 const columnWidth = 17
@@ -129,6 +154,26 @@ func RenderTable(m Model) string {
 
 	return centeredTable
 }
+
+func RenderList(options []string, cursor int, selected map[int]struct{}) string {
+	var s string
+	for i, choice := range options {
+		cur := " "
+		if cursor == i {
+			cur = ">"
+		}
+		check := " "
+		if selected != nil {
+			if _, ok := selected[i]; ok {
+				check = "x"
+			}
+		}
+		s += fmt.Sprintf("%s [%s] %s\n", cur, check, choice)
+	}
+	return s
+}
+
+// Funciones de Validación e Instalación de XAMPP
 
 func Validate() ValidationResult {
 	installed := isLAMPInstalled()
@@ -206,70 +251,8 @@ func spaces(n int) string {
 	return string(make([]rune, n))
 }
 
-type SFResponse struct {
-	Children []struct {
-		Name string `json:"name"`
-	} `json:"children"`
-}
-
-func ObtenerVersiones() ([]string, error) {
-	bashScript := `
-		curl -s https://sourceforge.net/projects/xampp/files/XAMPP%20Linux/ | \
-		gawk '
-			BEGIN { ver=""; count=""; link=""; }
-			/<tr title=/ { ver=""; count=""; link=""; }
-			/<a href="\/projects\/xampp\/files\/XAMPP%20Linux\/[0-9.]+\// {
-				match($0, /<a href="(\/projects\/xampp\/files\/XAMPP%20Linux\/[0-9.]+\/)"/, arr)
-				if (arr[1] != "") link=arr[1]
-			}
-			/<span class="name">/ {
-				match($0, /<span class="name">([^<]+)<\/span>/, arr)
-				if (arr[1] != "") ver=arr[1]
-			}
-			/<span class="count">/ {
-				match($0, /<span class="count">([0-9,]+)<\/span>/, arr)
-				gsub(",", "", arr[1])
-				count=arr[1]
-			}
-			/<\/tr>/ {
-				if (ver != "" && count != "" && count+0 > 5 && link != "") {
-					print ver "|https://sourceforge.net" link
-				}
-			}'
-		`
-	cmd := exec.Command("bash", "-c", bashScript)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("error ejecutando scraping: %v", err)
-	}
-	raw := splitLines(string(out))
-	var versiones []string
-	for _, v := range raw {
-		if v == "" {
-			continue
-		}
-		// sep := "|"
-		idx := -1
-		for i, c := range v {
-			if c == '|' {
-				idx = i
-				break
-			}
-		}
-		if idx > 0 {
-			versiones = append(versiones, v[:idx])
-		} else {
-			versiones = append(versiones, v)
-		}
-	}
-	if len(versiones) == 0 {
-		return nil, fmt.Errorf("no se encontraron versiones con más de 5 descargas")
-	}
-	return versiones, nil
-}
-
 func InstalarXAMPP() error {
-	versiones, err := ObtenerVersiones()
+	versiones, err := services.ObtenerVersiones()
 	if err != nil {
 		return fmt.Errorf("error al obtener versiones: %v", err)
 	}
@@ -301,70 +284,6 @@ func InstalarXAMPP() error {
 		fmt.Println("Instalador descargado pero no ejecutado.")
 	}
 	return nil
-}
-
-func splitLines(s string) []string {
-	var res []string
-	curr := ""
-	for _, c := range s {
-		if c == '\n' {
-			if curr != "" {
-				res = append(res, curr)
-				curr = ""
-			}
-		} else {
-			curr += string(c)
-		}
-	}
-	if curr != "" {
-		res = append(res, curr)
-	}
-	return res
-}
-
-/* XAMPP Services */
-type XAMPPServiceStatus struct {
-	Apache bool
-	MySQL  bool
-	FTP    bool
-}
-
-func GetXAMPPServiceStatus() (XAMPPServiceStatus, error) {
-	cmd := exec.Command("sudo", "/opt/lampp/lampp", "status")
-	out, err := cmd.Output()
-	if err != nil {
-		return XAMPPServiceStatus{}, fmt.Errorf("error al obtener estado de XAMPP: %v", err)
-	}
-	status := string(out)
-	return XAMPPServiceStatus{
-		Apache: contains(status, "Apache is running"),
-		MySQL:  contains(status, "MySQL is running"),
-		FTP:    contains(status, "ProFTPD is running"),
-	}, nil
-}
-
-func ControlXAMPPService(service, action string) error {
-	var cmd *exec.Cmd
-	switch service {
-	case "apache":
-		cmd = exec.Command("/opt/lampp/lampp", action+"apache")
-	case "mysql":
-		cmd = exec.Command("/opt/lampp/lampp", action+"mysql")
-	case "ftp":
-		cmd = exec.Command("/opt/lampp/lampp", action+"ftp")
-	case "all":
-		cmd = exec.Command("/opt/lampp/lampp", action)
-	default:
-		return fmt.Errorf("servicio no soportado: %s", service)
-	}
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error al ejecutar acción %s en %s: %v", action, service, err)
-	}
-	return nil
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || (len(s) > len(substr) && (contains(s[1:], substr) || contains(s[:len(s)-1], substr)))) || (len(s) >= len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr)))
 }
 
 // getResponse realiza una petición HTTP y retorna la respuesta
