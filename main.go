@@ -9,6 +9,8 @@ import (
 	"golang.org/x/term"
 )
 
+var p *tea.Program
+
 type Model struct {
 	choices   []string
 	pids      []int
@@ -133,7 +135,7 @@ func (m Model) View() tea.View {
 
 func main() {
 	result := Validate()
-	if result.Installed {
+	if !result.Installed {
 		p := tea.NewProgram(initialModel())
 		if _, err := p.Run(); err != nil {
 			fmt.Printf("Alas, there's been an error: %v", err)

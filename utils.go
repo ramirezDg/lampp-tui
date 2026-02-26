@@ -2,8 +2,15 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 
+	"charm.land/bubbles/v2/progress"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -14,6 +21,9 @@ var (
 	colorHighlightFg = lipgloss.Color("#F27127")
 	colorHighlightBg = lipgloss.Color("7")
 )
+
+type progressMsg float64
+
 
 var BannerTitleL = lipgloss.NewStyle().
 	Foreground(colorTitle).
@@ -124,6 +134,49 @@ func RenderTable(m Model) string {
 	return centeredTable
 }
 
+type VersionTableModel struct {
+	Versiones       []string
+	SelectedVersion int
+}
+
+func RenderVersionTable(m VersionTableModel) string {
+	numCols := 4
+	colWidth := 20
+	colStyle := func() lipgloss.Style {
+		return lipgloss.NewStyle().Width(colWidth).Align(lipgloss.Center)
+	}
+	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color("#F27127")).Bold(true).Width(colWidth).Align(lipgloss.Center)
+
+	n := len(m.Versiones)
+	numRows := (n + numCols - 1) / numCols
+	cells := make([][]string, numRows)
+	for i := 0; i < numRows; i++ {
+		cells[i] = make([]string, numCols)
+		for j := 0; j < numCols; j++ {
+			idx := i + j*numRows
+			if idx < n {
+				ver := m.Versiones[idx]
+				if ver == "" {
+					ver = "-"
+				}
+				if idx == m.SelectedVersion {
+					cells[i][j] = highlight.Render(ver)
+				} else {
+					cells[i][j] = colStyle().Render(ver)
+				}
+			} else {
+				cells[i][j] = colStyle().Render("")
+			}
+		}
+	}
+	var rows []string
+	for i := 0; i < numRows; i++ {
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, cells[i]...))
+	}
+	table := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	return table
+}
+
 func truncateOrPad(s string, width int) string {
 	runes := []rune(s)
 	length := len(runes)
@@ -140,45 +193,81 @@ func spaces(n int) string {
 	return string(make([]rune, n))
 }
 
-func InstalarXAMPP() error {
-	// Obtiene las versiones disponibles de XAMPP
-	cmdVersiones := exec.Command("bash", "-c", "curl -s https://www.apachefriends.org/download.html | grep -oP 'xampp-linux-x64-\\K[0-9.]+' | sort -V | uniq")
-	out, err := cmdVersiones.Output()
+type SFResponse struct {
+	Children []struct {
+		Name string `json:"name"`
+	} `json:"children"`
+}
+
+func ObtenerVersiones() ([]string, error) {
+	bashScript := `
+		curl -s https://sourceforge.net/projects/xampp/files/XAMPP%20Linux/ | \
+		gawk '
+			BEGIN { ver=""; count=""; link=""; }
+			/<tr title=/ { ver=""; count=""; link=""; }
+			/<a href="\/projects\/xampp\/files\/XAMPP%20Linux\/[0-9.]+\// {
+				match($0, /<a href="(\/projects\/xampp\/files\/XAMPP%20Linux\/[0-9.]+\/)"/, arr)
+				if (arr[1] != "") link=arr[1]
+			}
+			/<span class="name">/ {
+				match($0, /<span class="name">([^<]+)<\/span>/, arr)
+				if (arr[1] != "") ver=arr[1]
+			}
+			/<span class="count">/ {
+				match($0, /<span class="count">([0-9,]+)<\/span>/, arr)
+				gsub(",", "", arr[1])
+				count=arr[1]
+			}
+			/<\/tr>/ {
+				if (ver != "" && count != "" && count+0 > 5 && link != "") {
+					print ver "|https://sourceforge.net" link
+				}
+			}'
+		`
+	cmd := exec.Command("bash", "-c", bashScript)
+	out, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("error al obtener versiones de XAMPP: %v", err)
+		return nil, fmt.Errorf("error ejecutando scraping: %v", err)
 	}
-	versiones := string(out)
+	raw := splitLines(string(out))
+	var versiones []string
+	for _, v := range raw {
+		if v == "" {
+			continue
+		}
+		// sep := "|"
+		idx := -1
+		for i, c := range v {
+			if c == '|' {
+				idx = i
+				break
+			}
+		}
+		if idx > 0 {
+			versiones = append(versiones, v[:idx])
+		} else {
+			versiones = append(versiones, v)
+		}
+	}
+	if len(versiones) == 0 {
+		return nil, fmt.Errorf("no se encontraron versiones con más de 5 descargas")
+	}
+	return versiones, nil
+}
+
+func InstalarXAMPP() error {
+	versiones, err := ObtenerVersiones()
+	if err != nil {
+		return fmt.Errorf("error al obtener versiones: %v", err)
+	}
 	fmt.Println("Versiones disponibles de XAMPP:")
-	fmt.Println(versiones)
+	for _, v := range versiones {
+		fmt.Println(v)
+	}
 	fmt.Print("Ingrese la versión que desea instalar: ")
 	var version string
 	fmt.Scanln(&version)
-	url := fmt.Sprintf("https://www.apachefriends.org/xampp-files/%s/xampp-linux-x64-%s-0-installer.run", version, version)
-	// Descarga el instalador
-	cmdDescarga := exec.Command("wget", url, "-O", "xampp-installer.run")
-	cmdDescarga.Stdout = nil
-	cmdDescarga.Stderr = nil
-	if err := cmdDescarga.Run(); err != nil {
-		return fmt.Errorf("error al descargar XAMPP: %v", err)
-	}
-	// Da permisos de ejecución
-	cmdPermisos := exec.Command("chmod", "+x", "xampp-installer.run")
-	if err := cmdPermisos.Run(); err != nil {
-		return fmt.Errorf("error al dar permisos: %v", err)
-	}
-	// Ejecuta el instalador con sudo
-	cmdInstalar := exec.Command("sudo", "./xampp-installer.run")
-	cmdInstalar.Stdout = nil
-	cmdInstalar.Stderr = nil
-	if err := cmdInstalar.Run(); err != nil {
-		return fmt.Errorf("error al instalar XAMPP: %v", err)
-	}
-	return nil
-}
-
-// Instala XAMPP con la versión seleccionada
-func InstalarXAMPPConVersion(version string) error {
-	url := fmt.Sprintf("https://www.apachefriends.org/xampp-files/%s/xampp-linux-x64-%s-0-installer.run", version, version)
+	url := fmt.Sprintf("https://sourceforge.net/projects/xampp/files/XAMPP%%20Linux/%s/xampp-linux-x64-%s-0-installer.run/download", version, version)
 	cmdDescarga := exec.Command("wget", url, "-O", "xampp-installer.run")
 	if err := cmdDescarga.Run(); err != nil {
 		return fmt.Errorf("error al descargar XAMPP: %v", err)
@@ -187,20 +276,18 @@ func InstalarXAMPPConVersion(version string) error {
 	if err := cmdPermisos.Run(); err != nil {
 		return fmt.Errorf("error al dar permisos: %v", err)
 	}
-	cmdInstalar := exec.Command("sudo", "./xampp-installer.run")
-	if err := cmdInstalar.Run(); err != nil {
-		return fmt.Errorf("error al instalar XAMPP: %v", err)
+	var confirm string
+	fmt.Print("¿Desea ejecutar el instalador ahora? (s/n): ")
+	fmt.Scanln(&confirm)
+	if confirm == "s" || confirm == "S" {
+		cmdInstalar := exec.Command("sudo", "./xampp-installer.run")
+		if err := cmdInstalar.Run(); err != nil {
+			return fmt.Errorf("error al instalar XAMPP: %v", err)
+		}
+	} else {
+		fmt.Println("Instalador descargado pero no ejecutado.")
 	}
 	return nil
-}
-
-func getXAMPPVersions() []string {
-	cmd := exec.Command("bash", "-c", "curl -s https://www.apachefriends.org/download.html | grep -oP 'xampp-linux-x64-\\K[0-9.]+' | sort -V | uniq")
-	out, err := cmd.Output()
-	if err != nil {
-		return []string{"Error al obtener versiones"}
-	}
-	return splitLines(string(out))
 }
 
 func splitLines(s string) []string {
@@ -265,4 +352,71 @@ func ControlXAMPPService(service, action string) error {
 
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || (len(s) > len(substr) && (contains(s[1:], substr) || contains(s[:len(s)-1], substr)))) || (len(s) >= len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr)))
+}
+
+// getResponse realiza una petición HTTP y retorna la respuesta
+func getResponse(url string) (*http.Response, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Println("error en getResponse:", err)
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("receiving status of %d for url: %s", resp.StatusCode, url)
+	}
+	return resp, nil
+}
+
+func (pw *progressWriter) Start() {
+	_, err := io.Copy(pw.file, io.TeeReader(pw.reader, pw))
+	if err != nil {
+		log.Println("error en progressWriter.Start:", err)
+	}
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	pw.downloaded += len(p)
+	if pw.total > 0 && pw.onProgress != nil {
+		pw.onProgress(float64(pw.downloaded) / float64(pw.total))
+	}
+	return len(p), nil
+}
+
+func ShowDownloadXAMPP(url string) error {
+	resp, err := getResponse(url)
+	if err != nil {
+		return fmt.Errorf("could not get response: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.ContentLength <= 0 {
+		return fmt.Errorf("can't parse content length, aborting download")
+	}
+
+	filename := filepath.Base(url)
+	file, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("could not create file: %v", err)
+	}
+	defer file.Close()
+
+	pw := &progressWriter{
+		total:  int(resp.ContentLength),
+		file:   file,
+		reader: resp.Body,
+		onProgress: func(ratio float64) {
+			p.Send(progressMsg(ratio))
+		},
+	}
+
+	m := model{
+		pw:       pw,
+		progress: progress.New(progress.WithDefaultBlend()),
+	}
+	p = tea.NewProgram(m)
+	go pw.Start()
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("error running program: %v", err)
+	}
+	return nil
 }

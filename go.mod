@@ -7,8 +7,10 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 )
 
+require github.com/charmbracelet/harmonica v0.2.0 // indirect
+
 require (
-	charm.land/bubbles/v2 v2.0.0-rc.1 // indirect
+	charm.land/bubbles/v2 v2.0.0 // indirect
 	charm.land/lipgloss/v2 v2.0.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.4.2 // indirect
