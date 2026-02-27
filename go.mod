@@ -7,11 +7,12 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 )
 
-require github.com/charmbracelet/harmonica v0.2.0 // indirect
+require (
+	github.com/aymanbagabas/go-udiff v0.4.0 // indirect
+	github.com/charmbracelet/x/exp/golden v0.0.0-20250806222409-83e3a29d542f // indirect
+)
 
 require (
-	charm.land/bubbles/v2 v2.0.0
-	charm.land/lipgloss/v2 v2.0.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.4.2 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260223171050-89c142e4aa73 // indirect

@@ -54,8 +54,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "enter", "space":
 					// Acción según botón
 					if m.cursorVersionButton == 0 {
-						// Acción de instalar
-						// Aquí podrías iniciar la descarga usando m.xamppVersions[m.selectedVersion].DownloadURL
 						services.InstalarXAMPP(m.xamppVersions[m.selectedVersion].Name)
 						m.showVersionInfoPanel = false
 					} else {

@@ -49,7 +49,6 @@ func InstallPane(m Model, terminalWidth, terminalHeight int) string {
 		n := len(m.xamppVersions)
 		numRows := (n + numCols - 1) / numCols
 		selectedIdx := m.cursorVersionRow + m.cursorVersionCol*numRows
-		// Construir slice de nombres para la tabla
 		var nombres []string
 		for _, v := range m.xamppVersions {
 			nombres = append(nombres, v.Name)

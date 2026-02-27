@@ -2,14 +2,8 @@ package tui
 
 import (
 	"fmt"
-	"io"
-	"log"
-	"net/http"
 	"os"
-	"path/filepath"
 
-	"charm.land/bubbles/v2/progress"
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -287,71 +281,4 @@ func RenderVersionInfoPanel(downloadURL string, selectedButton int) string {
 	content := info + "\n" + buttons
 
 	return panelStyle.Render(content)
-}
-
-// getResponse realiza una petición HTTP y retorna la respuesta
-func getResponse(url string) (*http.Response, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Println("error en getResponse:", err)
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("receiving status of %d for url: %s", resp.StatusCode, url)
-	}
-	return resp, nil
-}
-
-func (pw *progressWriter) Start() {
-	_, err := io.Copy(pw.file, io.TeeReader(pw.reader, pw))
-	if err != nil {
-		log.Println("error en progressWriter.Start:", err)
-	}
-}
-
-func (pw *progressWriter) Write(p []byte) (int, error) {
-	pw.downloaded += len(p)
-	if pw.total > 0 && pw.onProgress != nil {
-		pw.onProgress(float64(pw.downloaded) / float64(pw.total))
-	}
-	return len(p), nil
-}
-
-func ShowDownloadXAMPP(url string) error {
-	resp, err := getResponse(url)
-	if err != nil {
-		return fmt.Errorf("could not get response: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.ContentLength <= 0 {
-		return fmt.Errorf("can't parse content length, aborting download")
-	}
-
-	filename := filepath.Base(url)
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("could not create file: %v", err)
-	}
-	defer file.Close()
-
-	pw := &progressWriter{
-		total:  int(resp.ContentLength),
-		file:   file,
-		reader: resp.Body,
-		onProgress: func(ratio float64) {
-			p.Send(progressMsg(ratio))
-		},
-	}
-
-	m := Model{
-		pw:       pw,
-		progress: progress.New(progress.WithDefaultBlend()),
-	}
-	p := tea.NewProgram(m)
-	go pw.Start()
-	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("error running program: %v", err)
-	}
-	return nil
 }

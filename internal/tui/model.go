@@ -1,25 +1,12 @@
 package tui
 
 import (
-	"io"
-	"os"
 	"xampp-tui/internal/services"
 
-	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
 )
 
 var p *tea.Program
-
-type progressMsg float64
-
-type progressWriter struct {
-	total      int
-	downloaded int
-	file       *os.File
-	reader     io.Reader
-	onProgress func(float64)
-}
 
 type ValidationResult struct {
 	OSName    string
@@ -47,8 +34,6 @@ type Model struct {
 	xamppVersions       []services.XAMPPVersion
 	selectedVersion     int
 	installing          bool
-	pw                  *progressWriter
-	progress            progress.Model
 	optionsInstallation []string
 	cursorInstall       int
 
