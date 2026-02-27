@@ -1,8 +1,11 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
+	"strings"
+	"time"
 )
 
 /* XAMPP Services */
@@ -17,16 +20,21 @@ func contains(s, substr string) bool {
 }
 
 func GetXAMPPServiceStatus() (XAMPPServiceStatus, error) {
-	cmd := exec.Command("sudo", "/opt/lampp/lampp", "status")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sudo", "/opt/lampp/lampp", "status")
 	out, err := cmd.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return XAMPPServiceStatus{}, fmt.Errorf("timeout al consultar estado de XAMPP")
+	}
 	if err != nil {
-		return XAMPPServiceStatus{}, fmt.Errorf("error al obtener estado de XAMPP: %v", err)
+		return XAMPPServiceStatus{}, err
 	}
 	status := string(out)
 	return XAMPPServiceStatus{
-		Apache: contains(status, "Apache is running"),
-		MySQL:  contains(status, "MySQL is running"),
-		FTP:    contains(status, "ProFTPD is running"),
+		Apache: strings.Contains(status, "Apache is running"),
+		MySQL:  strings.Contains(status, "MySQL is running"),
+		FTP:    strings.Contains(status, "ProFTPD is running"),
 	}, nil
 }
 

@@ -3,8 +3,18 @@ package tui
 import (
 	"xampp-tui/internal/services"
 
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 )
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
+		return tickMsg{}
+	})
+}
+
+type tickMsg struct{}
 
 func handleNavigation(key string, row, col, maxRow, maxCol int) (newRow, newCol int, quit bool) {
 	newRow, newCol = row, col
@@ -32,6 +42,15 @@ func handleNavigation(key string, row, col, maxRow, maxCol int) (newRow, newCol 
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg.(type) {
+	case tickMsg:
+		if status, err := services.GetXAMPPServiceStatus(); err == nil {
+			m.ApacheStatus = status.Apache
+			m.MySQLStatus = status.MySQL
+			m.FTPStatus = status.FTP
+		}
+		return m, tickCmd()
+	}
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		key := msg.String()
@@ -132,7 +151,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch service {
 				case "Apache":
 					serviceKey = "apache"
-				case "MySql":
+				case "MySQL":
 					serviceKey = "mysql"
 				case "FTP":
 					serviceKey = "ftp"
@@ -146,20 +165,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					services.ControlXAMPPService(serviceKey, "start")
 					m.status[m.cursorRow] = "running"
 				}
+				if status, err := services.GetXAMPPServiceStatus(); err == nil {
+					m.ApacheStatus = status.Apache
+					m.MySQLStatus = status.MySQL
+					m.FTPStatus = status.FTP
+				}
 			} else if m.cursorCol == 1 {
 				// Acción para port
 			} else if m.cursorCol == 2 {
 				// Acción para config
 			}
 		}
-		// Acciones rápidas
 		switch key {
 		case "e", "E":
-			// Acción para iniciar servicio
+			services.ControlXAMPPService("all", "restart")
 		case "x", "X":
-			// Acción para detener servicio
+			services.ControlXAMPPService("all", "stop")
 		case "r", "R":
-			// Acción para reiniciar servicio
+			services.ControlXAMPPService("all", "start")
+		}
+		if key == "e" || key == "E" || key == "x" || key == "X" || key == "r" || key == "R" {
+			if status, err := services.GetXAMPPServiceStatus(); err == nil {
+				m.ApacheStatus = status.Apache
+				m.MySQLStatus = status.MySQL
+				m.FTPStatus = status.FTP
+			}
 		}
 		return m, nil
 	}

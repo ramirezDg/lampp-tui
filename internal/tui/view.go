@@ -29,7 +29,8 @@ func AdminPane(m Model, terminalWidth, terminalHeight int) string {
 	title := RenderTitle(terminalWidth)
 	content := title + "\n" + lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, RenderTable(m)) + "\n"
 	content += RenderOptions(terminalWidth) + "\n"
-	content += lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, TextArea("Logs De Acciones"))
+	leftStyle := lipgloss.NewStyle().Align(lipgloss.Left)
+	content += lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, leftStyle.Render(TextArea("Logs De Acciones"))) + "\n"
 
 	return lipgloss.Place(
 		terminalWidth, terminalHeight,

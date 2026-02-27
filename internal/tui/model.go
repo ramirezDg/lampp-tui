@@ -19,6 +19,9 @@ type VersionTableModel struct {
 }
 
 type Model struct {
+	ApacheStatus        bool
+	MySQLStatus         bool
+	FTPStatus           bool
 	choices             []string
 	pids                []int
 	ports               []string
@@ -45,9 +48,10 @@ type Model struct {
 }
 
 func InitialModel() Model {
-	ShowNewView := Validate().Installed
+	ShowNewView := !Validate().Installed
+	serviceStatus, _ := services.GetXAMPPServiceStatus()
 	return Model{
-		choices:             []string{"Apache", "MySql", "FTP"},
+		choices:             []string{"Apache", "MySQL", "FTP"},
 		pids:                []int{0, 0, 0},
 		ports:               []string{"", "", ""},
 		config:              []string{"httpd.conf", "my.ini", "vsftpd.conf"},
@@ -57,9 +61,12 @@ func InitialModel() Model {
 		optionsInstallation: []string{"Install XAMPP", "Quit/Exit"},
 		cursorVersionRow:    0,
 		cursorVersionCol:    0,
+		ApacheStatus:        serviceStatus.Apache,
+		MySQLStatus:         serviceStatus.MySQL,
+		FTPStatus:           serviceStatus.FTP,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return tickCmd()
 }

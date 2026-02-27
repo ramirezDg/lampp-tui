@@ -91,6 +91,10 @@ func RenderTable(m Model) string {
 		Width(columnWidth).
 		Align(lipgloss.Center)
 
+	// Colores para estados
+	green := lipgloss.Color("#27ae60")
+	red := lipgloss.Color("#e74c3c")
+
 	leftTitle := colStyle().Bold(true).Underline(true).MarginBottom(1).Render("Servicio")
 	pidTitle := colStyle().Bold(true).Underline(true).MarginBottom(1).Render("PID")
 	portTitle := colStyle().Bold(true).Underline(true).MarginBottom(1).Render("Puerto")
@@ -98,13 +102,36 @@ func RenderTable(m Model) string {
 
 	rows := make([]string, len(m.choices))
 	for i := range m.choices {
-		// Servicio
 		servicio := truncateOrPad(m.choices[i], columnWidth)
 		var servicioCell string
+		var color lipgloss.Color
+		switch m.choices[i] {
+		case "apache", "Apache":
+			if m.ApacheStatus {
+				color = green
+			} else {
+				color = red
+			}
+		case "mysql", "MySQL":
+			if m.MySQLStatus {
+				color = green
+			} else {
+				color = red
+			}
+		case "ftp", "FTP":
+			if m.FTPStatus {
+				color = green
+			} else {
+				color = red
+			}
+		default:
+			color = colorText
+		}
+		servicioStyle := colStyle().Foreground(color)
 		if m.cursorRow == i && m.cursorCol == 0 {
 			servicioCell = highlight.Render(servicio)
 		} else {
-			servicioCell = colStyle().Render(servicio)
+			servicioCell = servicioStyle.Render(servicio)
 		}
 
 		// PID
