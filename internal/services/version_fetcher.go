@@ -5,13 +5,12 @@ import (
 	"os/exec"
 )
 
-type SFResponse struct {
-	Children []struct {
-		Name string `json:"name"`
-	} `json:"children"`
+type XAMPPVersion struct {
+	Name        string // versión (ej: "8.2.12")
+	DownloadURL string // link directo de descarga
 }
 
-func ObtenerVersiones() ([]string, error) {
+func ObtenerVersiones() ([]XAMPPVersion, error) {
 	bashScript := `
 		curl -s https://sourceforge.net/projects/xampp/files/XAMPP%20Linux/ | \
 		gawk '
@@ -42,12 +41,11 @@ func ObtenerVersiones() ([]string, error) {
 		return nil, fmt.Errorf("error ejecutando scraping: %v", err)
 	}
 	raw := splitLines(string(out))
-	var versiones []string
+	var versiones []XAMPPVersion
 	for _, v := range raw {
 		if v == "" {
 			continue
 		}
-		// sep := "|"
 		idx := -1
 		for i, c := range v {
 			if c == '|' {
@@ -56,9 +54,12 @@ func ObtenerVersiones() ([]string, error) {
 			}
 		}
 		if idx > 0 {
-			versiones = append(versiones, v[:idx])
-		} else {
-			versiones = append(versiones, v)
+			name := v[:idx]
+			url := v[idx+1:]
+			versiones = append(versiones, XAMPPVersion{
+				Name:        name,
+				DownloadURL: url,
+			})
 		}
 	}
 	if len(versiones) == 0 {

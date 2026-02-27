@@ -6,60 +6,108 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+func handleNavigation(key string, row, col, maxRow, maxCol int) (newRow, newCol int, quit bool) {
+	newRow, newCol = row, col
+	switch key {
+	case "up", "w", "W", "↑":
+		if newRow > 0 {
+			newRow--
+		}
+	case "down", "s", "S", "↓":
+		if newRow < maxRow-1 {
+			newRow++
+		}
+	case "left", "a", "A", "←":
+		if newCol > 0 {
+			newCol--
+		}
+	case "right", "d", "D", "→":
+		if newCol < maxCol-1 {
+			newCol++
+		}
+	case "ctrl+c", "q":
+		quit = true
+	}
+	return
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		// Si estamos en la vista de instalación, navegamos optionsInstallation
-		if m.ShowNewView {
-			// Si está instalando, navegamos el menú de versiones
-			if m.installing {
-				num := len(m.versiones)
-				switch msg.String() {
-				case "up", "w", "W", "↑":
-					if m.cursorVersion > 0 {
-						m.cursorVersion--
+		key := msg.String()
+		// --- Selección de versión (tabla bidimensional) ---
+		if m.ShowNewView && m.installing {
+			// Si el panel de info está activo, navegar entre botones
+			if m.showVersionInfoPanel {
+				// Solo dos botones: 0=Install, 1=Quit
+				switch key {
+				case "left", "a", "A", "←":
+					if m.cursorVersionButton > 0 {
+						m.cursorVersionButton--
 					}
-				case "down", "s", "S", "↓":
-					if m.cursorVersion < num-1 {
-						m.cursorVersion++
+				case "right", "d", "D", "→":
+					if m.cursorVersionButton < 1 {
+						m.cursorVersionButton++
 					}
 				case "q", "esc":
-					m.installing = false // Salir del menú de versiones
+					m.showVersionInfoPanel = false
 				case "enter", "space":
-					m.selectedVersion = m.cursorVersion
-					// Aquí podrías iniciar la descarga/instalación
+					// Acción según botón
+					if m.cursorVersionButton == 0 {
+						// Acción de instalar
+						// Aquí podrías iniciar la descarga usando m.xamppVersions[m.selectedVersion].DownloadURL
+						services.InstalarXAMPP(m.xamppVersions[m.selectedVersion].Name, m.xamppVersions[m.selectedVersion].DownloadURL)
+						m.showVersionInfoPanel = false
+					} else {
+						m.showVersionInfoPanel = false
+					}
 				}
 				return m, nil
 			}
-			switch msg.String() {
-			case "up", "w", "W", "↑":
-				if m.cursorInstall > 0 {
-					m.cursorInstall--
-				}
-			case "down", "s", "S", "↓":
-				if m.cursorInstall < len(m.optionsInstallation)-1 {
-					m.cursorInstall++
-				}
-			case "left", "a", "A", "←":
-				if m.cursorCol > 0 {
-					m.cursorCol--
-				}
-			case "right", "d", "D", "→":
-				if m.cursorCol < 3 {
-					m.cursorCol++
-				}
-			case "enter", "space":
-				// Acción según opción seleccionada
+			// Parámetros de la tabla de versiones
+			numCols := 4
+			n := len(m.xamppVersions)
+			numRows := (n + numCols - 1) / numCols
+			row, col, quit := handleNavigation(key, m.cursorVersionRow, m.cursorVersionCol, numRows, numCols)
+			// Limitar el cursor a celdas válidas
+			idx := row + col*numRows
+			if idx >= n {
+				// Si la celda está fuera de rango, no mover el cursor
+				row, col = m.cursorVersionRow, m.cursorVersionCol
+			}
+			m.cursorVersionRow, m.cursorVersionCol = row, col
+			m.selectedVersion = idx
+			if key == "q" || key == "esc" {
+				m.installing = false
+			} else if key == "enter" || key == "space" {
+				// Activar panel de info
+				m.showVersionInfoPanel = true
+				m.cursorVersionButton = 0
+			}
+			if quit {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+		// --- Menú de instalación ---
+		if m.ShowNewView {
+			row, col, quit := handleNavigation(key, m.cursorInstall, m.cursorCol, len(m.optionsInstallation), 4)
+			m.cursorInstall, m.cursorCol = row, col
+			if quit {
+				return m, tea.Quit
+			}
+			if key == "enter" || key == "space" {
 				switch m.cursorInstall {
 				case 0: // "Install XAMPP"
-					if len(m.versiones) == 0 {
+					if len(m.xamppVersions) == 0 {
 						versiones, err := services.ObtenerVersiones()
 						if err == nil {
-							m.versiones = versiones
+							m.xamppVersions = versiones
 						} else {
-							m.versiones = []string{"Error obteniendo versiones"}
+							m.xamppVersions = []services.XAMPPVersion{{Name: "Error obteniendo versiones", DownloadURL: ""}}
 						}
-						m.cursorVersion = 0
+						m.cursorVersionRow = 0
+						m.cursorVersionCol = 0
 						m.selectedVersion = 0
 					}
 					m.installing = true
@@ -69,53 +117,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		// Si no, lógica normal de admin
-		switch msg.String() {
-		case "ctrl+c", "q":
+		// --- Menú principal (servicios) ---
+		row, col, quit := handleNavigation(key, m.cursorRow, m.cursorCol, len(m.choices), 4)
+		m.cursorRow, m.cursorCol = row, col
+		if quit {
 			return m, tea.Quit
-		case "left", "a", "A", "←":
-			if m.cursorCol > 0 {
-				m.cursorCol--
-			}
-		case "right", "d", "D", "→":
-			if m.cursorCol < 3 {
-				m.cursorCol++
-			}
-		case "up", "w", "W", "↑":
-			if m.cursorRow > 0 {
-				m.cursorRow--
-			}
-		case "down", "s", "S", "↓":
-			if m.cursorRow < len(m.choices)-1 {
-				m.cursorRow++
-			}
-		case "enter", "space":
-			// Si está instalando, navegamos el menú de versiones
+		}
+		if key == "enter" || key == "space" {
 			if m.installing {
-				// Obtener el número de versiones (debería estar en m.versiones)
-				num := len(m.versiones)
-				switch msg.String() {
-				case "up", "w", "W", "↑":
-					if m.cursorVersion > 0 {
-						m.cursorVersion--
-					}
-				case "down", "s", "S", "↓":
-					if m.cursorVersion < num-1 {
-						m.cursorVersion++
-					}
-				case "q", "esc":
-					m.installing = false // Salir del menú de versiones
-				case "enter", "space":
-					// Seleccionar versión
-					m.selectedVersion = m.cursorVersion
-					// Aquí podrías iniciar la descarga/instalación
-				}
+				// Ya no se usa aquí, la selección de versión está arriba
 				return m, nil
 			}
-			// Solo permitir acción en columna 0 (choices), 1 (port), 2 (config)
 			if m.cursorCol == 0 {
 				service := m.choices[m.cursorRow]
-				// Mapear a los nombres esperados por ControlXAMPPService
 				var serviceKey string
 				switch service {
 				case "Apache":
@@ -135,12 +149,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.status[m.cursorRow] = "running"
 				}
 			} else if m.cursorCol == 1 {
-				// Acción para port (ejemplo: editar puerto)
-				// m.ports[m.cursorRow] = "nuevo puerto"
+				// Acción para port
 			} else if m.cursorCol == 2 {
-				// Acción para config (ejemplo: abrir config)
-				// m.config[m.cursorRow] = "nuevo config"
+				// Acción para config
 			}
+		}
+		// Acciones rápidas
+		switch key {
 		case "e", "E":
 			// Acción para iniciar servicio
 		case "x", "X":
@@ -148,6 +163,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r", "R":
 			// Acción para reiniciar servicio
 		}
+		return m, nil
 	}
 	return m, nil
 }

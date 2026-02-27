@@ -45,11 +45,32 @@ func InstallPane(m Model, terminalWidth, terminalHeight int) string {
 
 	if m.installing {
 		content += "\n\n" + lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, gray.Bold(true).Render("Select the XAMPP version:")) + "\n\n"
+		numCols := 4
+		n := len(m.xamppVersions)
+		numRows := (n + numCols - 1) / numCols
+		selectedIdx := m.cursorVersionRow + m.cursorVersionCol*numRows
+		// Construir slice de nombres para la tabla
+		var nombres []string
+		for _, v := range m.xamppVersions {
+			nombres = append(nombres, v.Name)
+		}
 		versionTable := RenderVersionTable(VersionTableModel{
-			Versiones:       m.versiones,
-			SelectedVersion: m.cursorVersion,
+			Versiones:       nombres,
+			SelectedVersion: selectedIdx,
 		})
 		content += lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, versionTable) + "\n"
+
+		// Panel de información de descarga solo si está activo
+		if m.showVersionInfoPanel {
+			var downloadURL string
+			if n > 0 && selectedIdx < n {
+				downloadURL = m.xamppVersions[selectedIdx].DownloadURL
+			} else {
+				downloadURL = "(select a valid version)"
+			}
+			versionInfoPanel := RenderVersionInfoPanel(downloadURL, m.cursorVersionButton)
+			content += lipgloss.PlaceHorizontal(terminalWidth, lipgloss.Center, versionInfoPanel) + "\n"
+		}
 	} else {
 		leftStyle := lipgloss.NewStyle().Align(lipgloss.Left)
 		optionsList := RenderList(m.optionsInstallation, m.cursorInstall, nil)

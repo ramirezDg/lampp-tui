@@ -6,14 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
-
-	"xampp-tui/internal/services"
 )
 
 var (
@@ -251,39 +248,45 @@ func spaces(n int) string {
 	return string(make([]rune, n))
 }
 
-func InstalarXAMPP() error {
-	versiones, err := services.ObtenerVersiones()
-	if err != nil {
-		return fmt.Errorf("error al obtener versiones: %v", err)
-	}
-	fmt.Println("Versiones disponibles de XAMPP:")
-	for _, v := range versiones {
-		fmt.Println(v)
-	}
-	fmt.Print("Ingrese la versión que desea instalar: ")
-	var version string
-	fmt.Scanln(&version)
-	url := fmt.Sprintf("https://sourceforge.net/projects/xampp/files/XAMPP%%20Linux/%s/xampp-linux-x64-%s-0-installer.run/download", version, version)
-	cmdDescarga := exec.Command("wget", url, "-O", "xampp-installer.run")
-	if err := cmdDescarga.Run(); err != nil {
-		return fmt.Errorf("error al descargar XAMPP: %v", err)
-	}
-	cmdPermisos := exec.Command("chmod", "+x", "xampp-installer.run")
-	if err := cmdPermisos.Run(); err != nil {
-		return fmt.Errorf("error al dar permisos: %v", err)
-	}
-	var confirm string
-	fmt.Print("¿Desea ejecutar el instalador ahora? (s/n): ")
-	fmt.Scanln(&confirm)
-	if confirm == "s" || confirm == "S" {
-		cmdInstalar := exec.Command("sudo", "./xampp-installer.run")
-		if err := cmdInstalar.Run(); err != nil {
-			return fmt.Errorf("error al instalar XAMPP: %v", err)
-		}
+func RenderVersionInfoPanel(downloadURL string, selectedButton int) string {
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#F27127")).
+		Padding(0, 1).
+		Background(lipgloss.Color("#222222")).
+		Foreground(lipgloss.Color("#F7F7F7"))
+
+	labelStyle := lipgloss.NewStyle().Bold(true)
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F27127"))
+
+	info := labelStyle.Render("URL Descarga: ") + valueStyle.Render(downloadURL) + "\n" +
+		labelStyle.Render("Destino: ") + valueStyle.Render("./downloads/")
+
+	// Botones
+	btnStyle := lipgloss.NewStyle().
+		Padding(0, 1).
+		Margin(0, 1).
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("#888888"))
+
+	btnActive := btnStyle.Copy().
+		Foreground(lipgloss.Color("#fff")).
+		Background(lipgloss.Color("#F27127")).
+		BorderForeground(lipgloss.Color("#F27127")).
+		Bold(true)
+
+	installBtn := btnStyle.Render("Install")
+	quitBtn := btnStyle.Render("Quit")
+	if selectedButton == 0 {
+		installBtn = btnActive.Render("Install")
 	} else {
-		fmt.Println("Instalador descargado pero no ejecutado.")
+		quitBtn = btnActive.Render("Quit")
 	}
-	return nil
+
+	buttons := lipgloss.JoinHorizontal(lipgloss.Top, installBtn, quitBtn)
+	content := info + "\n" + buttons
+
+	return panelStyle.Render(content)
 }
 
 // getResponse realiza una petición HTTP y retorna la respuesta

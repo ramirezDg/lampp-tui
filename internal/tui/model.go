@@ -3,6 +3,7 @@ package tui
 import (
 	"io"
 	"os"
+	"xampp-tui/internal/services"
 
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
@@ -43,14 +44,19 @@ type Model struct {
 	osName              string
 	installed           bool
 	showVersionList     bool
-	versiones           []string
+	xamppVersions       []services.XAMPPVersion
 	selectedVersion     int
 	installing          bool
 	pw                  *progressWriter
 	progress            progress.Model
 	optionsInstallation []string
 	cursorInstall       int
-	cursorVersion       int
+
+	cursorVersionRow int
+	cursorVersionCol int
+
+	showVersionInfoPanel bool
+	cursorVersionButton  int
 }
 
 func InitialModel() Model {
@@ -64,6 +70,8 @@ func InitialModel() Model {
 		statusInstallation:  []string{"Not Installed", "Installed"},
 		ShowNewView:         ShowNewView,
 		optionsInstallation: []string{"Install XAMPP", "Quit/Exit"},
+		cursorVersionRow:    0,
+		cursorVersionCol:    0,
 	}
 }
 
