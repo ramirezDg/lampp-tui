@@ -1,0 +1,5 @@
+# Ignorar todo el contenido de downloads
+cmd/lampp-tui/downloads/
+
+# Ignorar el archivo de log
+cmd/logs/

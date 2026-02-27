@@ -18,32 +18,32 @@
 ## Estructura recomendada de carpetas
 
 ```
-lampp-tui/
-├── main.go           # Lógica principal de la TUI
-├── ui.go             # Funciones visuales y helpers
-├── go.mod / go.sum   # Dependencias
-├── README.md         # Documentación principal
-├── docs/             # Documentación avanzada
-│   └── README.md
-├── assets/                 # Recursos estáticos (imágenes, ejemplos)
-│   └── README.md
-├── cmd/                    # Entrypoints ejecutables
-│   └── lampp-tui/main.go   # main para la TUI
-├── internal/               # Lógica interna no exportada
-│   ├── tui/                # UI y componentes Bubble Tea
-│   │   ├── model.go        # Modelo de estado de la UI
-│   │   ├── update.go       # Lógica de actualización (mensajes)
-│   │   ├── view.go         # Renderizado visual
-│   │   └── styles.go       # Estilos Lipgloss
-│   ├── services/           # Lógica de negocio y servicios
-│   │   ├── downloader.go   # Descarga de archivos
-│   │   ├── http_client.go  # Cliente HTTP reutilizable
-│   │   ├── xampp.go        # Control y estado de XAMPP
-│   │   └── version_fetcher.go # Obtención de versiones XAMPP
-│   └── state/              # Estado global (opcional)
-│       └── app_state.go
-└── docs/                   # Documentación avanzada
-   └── README.md
+└── 📁xampp-tui                # Raíz del proyecto
+    └── 📁assets               # Recursos estáticos y documentación
+        ├── README.md          # Descripción de recursos
+    └── 📁cmd                  # Entrypoints de la app
+        └── 📁lampp-tui        # Ejecutable principal
+            └── 📁downloads    # Descargas temporales de XAMPP
+            ├── main.go        # Main de la app TUI
+        └── 📁logs             # Archivos de logs de la app
+            ├── app.log        # Log principal de la aplicación
+    └── 📁internal             # Código fuente interno (no exportado)
+        └── 📁services         # Lógica de negocio y servicios
+            ├── downloader.go      # Descarga de instaladores XAMPP
+            ├── version_fetcher.go # Obtención de versiones
+            ├── xampp.go           # Lógica de gestión XAMPP
+        └── 📁state            # Estado global de la app
+            ├── app_state.go   # Definición y manejo de estado
+        └── 📁tui              # Lógica y componentes de la interfaz TUI
+            ├── model.go       # Modelo de datos para la TUI
+            ├── styles.go      # Estilos visuales
+            ├── update.go      # Actualización de estado/modelo
+            ├── utils.go       # Utilidades varias para la TUI
+            ├── view.go        # Renderizado de vistas
+    ├── .gitignore             # Archivos/carpetas ignorados por git
+    ├── go.mod                 # Dependencias y módulo Go
+    ├── go.sum                 # Sumas de verificación de dependencias
+    └── README.md              # Documentación principal del proyecto
 ```
 
 Esta estructura sigue las mejores prácticas de Go y Bubble Tea:
@@ -92,6 +92,10 @@ Logs De Acciones
 
 - Go 1.18 o superior
 - Linux (probado en terminal)
+- gawk (procesamiento de texto en scripts y utilidades)
+    - Instálalo en Debian/Ubuntu con: `sudo apt install gawk`
+    - En Arch/Manjaro: `sudo pacman -S gawk`
+    - En Fedora: `sudo dnf install gawk`
 - Dependencias:
     - [Bubble Tea](https://github.com/charmbracelet/bubbletea)
     - [Lipgloss](https://github.com/charmbracelet/lipgloss)
