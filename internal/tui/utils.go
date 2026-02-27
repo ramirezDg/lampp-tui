@@ -7,13 +7,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var (
-	colorTitle       = lipgloss.Color("#F27127")
-	colorText        = lipgloss.Color("#333333")
-	colorHighlightFg = lipgloss.Color("#F27127")
-	colorHighlightBg = lipgloss.Color("7")
-)
-
 var BannerTitleL = lipgloss.NewStyle().
 	Foreground(colorTitle).
 	Bold(true).
@@ -92,12 +85,12 @@ func RenderTable(m Model) string {
 		Align(lipgloss.Center)
 
 	// Colores para estados
-	green := lipgloss.Color("#27ae60")
-	red := lipgloss.Color("#e74c3c")
+	green := lipgloss.Color("#27F271")
+	red := lipgloss.Color("#F22727")
 
-	leftTitle := colStyle().Bold(true).Underline(true).MarginBottom(1).Render("Servicio")
+	leftTitle := colStyle().Bold(true).Underline(true).MarginBottom(1).Render("Service")
 	pidTitle := colStyle().Bold(true).Underline(true).MarginBottom(1).Render("PID")
-	portTitle := colStyle().Bold(true).Underline(true).MarginBottom(1).Render("Puerto")
+	portTitle := colStyle().Bold(true).Underline(true).MarginBottom(1).Render("Port")
 	configTitle := colStyle().Bold(true).Underline(true).MarginBottom(1).Render("Config")
 
 	rows := make([]string, len(m.choices))
@@ -133,32 +126,43 @@ func RenderTable(m Model) string {
 		} else {
 			servicioCell = servicioStyle.Render(servicio)
 		}
-
-		// PID
-		pid := truncateOrPad(fmt.Sprintf("%d", m.pids[i]), columnWidth)
-		var pidCell string
-		if m.cursorRow == i && m.cursorCol == 1 {
-			pidCell = highlight.Render(pid)
-		} else {
+		var pidCell, portCell, configCell string
+		if m.ApacheStatus && (m.choices[i] == "apache" || m.choices[i] == "Apache") {
+			pid := truncateOrPad(fmt.Sprintf("%d", m.pids[i]), columnWidth)
+			port := truncateOrPad(m.ports[i], columnWidth)
+			config := truncateOrPad(m.config[i], columnWidth)
 			pidCell = colStyle().Render(pid)
-		}
-
-		// Puerto
-		port := truncateOrPad(m.ports[i], columnWidth)
-		var portCell string
-		if m.cursorRow == i && m.cursorCol == 2 {
-			portCell = highlight.Render(port)
-		} else {
 			portCell = colStyle().Render(port)
+			configCell = colStyle().Render(config)
+		} else if m.MySQLStatus && (m.choices[i] == "mysql" || m.choices[i] == "MySQL") {
+			pid := truncateOrPad(fmt.Sprintf("%d", m.pids[i]), columnWidth)
+			port := truncateOrPad(m.ports[i], columnWidth)
+			config := truncateOrPad(m.config[i], columnWidth)
+			pidCell = colStyle().Render(pid)
+			portCell = colStyle().Render(port)
+			configCell = colStyle().Render(config)
+		} else if m.FTPStatus && (m.choices[i] == "ftp" || m.choices[i] == "FTP") {
+			pid := truncateOrPad(fmt.Sprintf("%d", m.pids[i]), columnWidth)
+			port := truncateOrPad(m.ports[i], columnWidth)
+			config := truncateOrPad(m.config[i], columnWidth)
+			pidCell = colStyle().Render(pid)
+			portCell = colStyle().Render(port)
+			configCell = colStyle().Render(config)
+		} else {
+			pidCell = colStyle().Render(truncateOrPad("", columnWidth))
+			portCell = colStyle().Render(truncateOrPad("", columnWidth))
+			configCell = colStyle().Render(truncateOrPad("", columnWidth))
 		}
 
-		// Config
-		config := truncateOrPad(m.config[i], columnWidth)
-		var configCell string
+		// Resaltar si el cursor está en la celda
+		if m.cursorRow == i && m.cursorCol == 1 {
+			pidCell = highlight.Render(truncateOrPad(fmt.Sprintf("%d", m.pids[i]), columnWidth))
+		}
+		if m.cursorRow == i && m.cursorCol == 2 {
+			portCell = highlight.Render(truncateOrPad(m.ports[i], columnWidth))
+		}
 		if m.cursorRow == i && m.cursorCol == 3 {
-			configCell = highlight.Render(config)
-		} else {
-			configCell = colStyle().Render(config)
+			configCell = highlight.Render(truncateOrPad(m.config[i], columnWidth))
 		}
 
 		rows[i] = lipgloss.JoinHorizontal(lipgloss.Top, servicioCell, pidCell, portCell, configCell)

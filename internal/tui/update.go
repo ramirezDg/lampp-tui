@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"xampp-tui/internal/services"
 
 	"time"
@@ -42,14 +43,33 @@ func handleNavigation(key string, row, col, maxRow, maxCol int) (newRow, newCol 
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg.(type) {
-	case tickMsg:
-		if status, err := services.GetXAMPPServiceStatus(); err == nil {
-			m.ApacheStatus = status.Apache
-			m.MySQLStatus = status.MySQL
-			m.FTPStatus = status.FTP
-		}
-		return m, tickCmd()
+	       switch msg.(type) {
+	       case tickMsg:
+		       if status, err := services.GetXAMPPServiceStatus(); err == nil {
+			       m.ApacheStatus = status.Apache
+			       m.MySQLStatus = status.MySQL
+			       m.FTPStatus = status.FTP
+		       }
+		       // Obtener detalles (PID, puerto) y actualizar el modelo
+		       if details, err := services.GetXAMPPServiceDetails(); err == nil {
+			       for i, svc := range m.choices {
+				       info, ok := details[svc]
+				       if ok && info.PID != "" {
+					       // Convertir PID a int
+					       var pidInt int
+					       fmt.Sscanf(info.PID, "%d", &pidInt)
+					       m.pids[i] = pidInt
+				       } else {
+					       m.pids[i] = 0
+				       }
+				       if ok {
+					       m.ports[i] = info.Port
+				       } else {
+					       m.ports[i] = ""
+				       }
+			       }
+		       }
+		       return m, tickCmd()
 	}
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
