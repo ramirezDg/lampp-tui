@@ -1,69 +1,59 @@
 package tui
 
 import (
-	"xampp-tui/internal/services"
+	"xampp-tui/internal/installer"
+	"xampp-tui/internal/xampp"
 
 	tea "charm.land/bubbletea/v2"
 )
 
-var p *tea.Program
-
-type ValidationResult struct {
-	OSName    string
-	Installed bool
-}
-
-type VersionTableModel struct {
-	Versiones       []string
-	SelectedVersion int
-}
-
+// Model is the central BubbleTea state for the application. It is immutable
+// between updates — Update always returns a new copy.
 type Model struct {
-	ApacheStatus        bool
-	MySQLStatus         bool
-	FTPStatus           bool
-	choices             []string
-	pids                []int
-	ports               []string
-	config              []string
-	cursorRow           int
-	cursorCol           int
-	status              []string
-	statusInstallation  []string
+	// Service runtime state
+	ApacheStatus bool
+	MySQLStatus  bool
+	FTPStatus    bool
+	pids         []int
+	ports        []string
+
+	// Main service table
+	choices []string
+	config  []string
+
+	// Cursor for the main service table (row = service, col = column)
+	cursorRow int
+	cursorCol int
+
+	// Installation flow
 	ShowNewView         bool
-	osName              string
-	installed           bool
-	showVersionList     bool
-	xamppVersions       []services.XAMPPVersion
-	selectedVersion     int
 	installing          bool
+	xamppVersions       []installer.Version
+	selectedVersion     int
 	optionsInstallation []string
 	cursorInstall       int
 
+	// Version selection table cursor
 	cursorVersionRow int
 	cursorVersionCol int
 
+	// Version info panel (shown after selecting a version)
 	showVersionInfoPanel bool
 	cursorVersionButton  int
 }
 
 func InitialModel() Model {
-	ShowNewView := !Validate().Installed
-	serviceStatus, _ := services.GetXAMPPServiceStatus()
+	status, _ := xampp.GetServiceStatus(backgroundCtx())
 	return Model{
 		choices:             []string{"Apache", "MySQL", "FTP"},
 		pids:                []int{0, 0, 0},
 		ports:               []string{"", "", ""},
 		config:              []string{"httpd.conf", "my.ini", "vsftpd.conf"},
-		status:              []string{"stopped", "stopped", "stopped"},
-		statusInstallation:  []string{"Not Installed", "Installed"},
-		ShowNewView:         ShowNewView,
+		ShowNewView:         !xampp.IsInstalled(),
 		optionsInstallation: []string{"Install XAMPP", "Quit/Exit"},
-		cursorVersionRow:    0,
-		cursorVersionCol:    0,
-		ApacheStatus:        serviceStatus.Apache,
-		MySQLStatus:         serviceStatus.MySQL,
-		FTPStatus:           serviceStatus.FTP,
+		ApacheStatus:        status.Apache,
+		MySQLStatus:         status.MySQL,
+		FTPStatus:           status.FTP,
 	}
 }
 

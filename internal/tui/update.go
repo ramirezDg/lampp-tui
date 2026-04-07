@@ -1,23 +1,233 @@
 package tui
 
 import (
+	"context"
 	"fmt"
-	"xampp-tui/internal/services"
-
 	"time"
+	"xampp-tui/internal/installer"
+	"xampp-tui/internal/xampp"
 
 	tea "charm.land/bubbletea/v2"
 )
 
+// backgroundCtx returns a plain background context. Centralised here so that
+// service calls throughout the TUI package are easy to swap for a cancelable
+// context later.
+func backgroundCtx() context.Context { return context.Background() }
+
+// ─── tick ────────────────────────────────────────────────────────────────────
+
+type tickMsg struct{}
+
 func tickCmd() tea.Cmd {
-	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
+	return tea.Tick(5*time.Second, func(time.Time) tea.Msg {
 		return tickMsg{}
 	})
 }
 
-type tickMsg struct{}
+// ─── Update ──────────────────────────────────────────────────────────────────
 
-func handleNavigation(key string, row, col, maxRow, maxCol int) (newRow, newCol int, quit bool) {
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg.(type) {
+	case tickMsg:
+		m = m.refreshSnapshot()
+		return m, tickCmd()
+	}
+
+	msg2, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return m, nil
+	}
+	key := msg2.String()
+
+	switch {
+	case m.ShowNewView && m.installing:
+		return m.handleVersionSelection(key)
+	case m.ShowNewView:
+		return m.handleInstallMenu(key)
+	default:
+		return m.handleMainMenu(key)
+	}
+}
+
+// ─── sub-handlers ────────────────────────────────────────────────────────────
+
+// handleVersionSelection processes keyboard input while the version-picker
+// table (and its info panel) is visible.
+func (m Model) handleVersionSelection(key string) (tea.Model, tea.Cmd) {
+	if m.showVersionInfoPanel {
+		return m.handleVersionInfoPanel(key)
+	}
+
+	numCols := 4
+	n := len(m.xamppVersions)
+	numRows := (n + numCols - 1) / numCols
+
+	row, col, quit := navigate(key, m.cursorVersionRow, m.cursorVersionCol, numRows, numCols)
+
+	// Clamp cursor to valid cells only.
+	if idx := row + col*numRows; idx >= n {
+		row, col = m.cursorVersionRow, m.cursorVersionCol
+	}
+	m.cursorVersionRow, m.cursorVersionCol = row, col
+	m.selectedVersion = m.cursorVersionRow + m.cursorVersionCol*numRows
+
+	switch key {
+	case "q", "esc":
+		m.installing = false
+	case "enter", " ":
+		m.showVersionInfoPanel = true
+		m.cursorVersionButton = 0
+	}
+	if quit {
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+// handleVersionInfoPanel processes keyboard input while the download-info
+// panel overlay is shown.
+func (m Model) handleVersionInfoPanel(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "left", "a", "A", "←":
+		if m.cursorVersionButton > 0 {
+			m.cursorVersionButton--
+		}
+	case "right", "d", "D", "→":
+		if m.cursorVersionButton < 1 {
+			m.cursorVersionButton++
+		}
+	case "q", "esc":
+		m.showVersionInfoPanel = false
+	case "enter", " ":
+		if m.cursorVersionButton == 0 {
+			installer.Install(m.xamppVersions[m.selectedVersion].Name)
+			m.showVersionInfoPanel = false
+		} else {
+			m.showVersionInfoPanel = false
+		}
+	}
+	return m, nil
+}
+
+// handleInstallMenu processes keyboard input on the "XAMPP not installed" welcome
+// screen.
+func (m Model) handleInstallMenu(key string) (tea.Model, tea.Cmd) {
+	row, _, quit := navigate(key, m.cursorInstall, 0, len(m.optionsInstallation), 1)
+	m.cursorInstall = row
+
+	if quit {
+		return m, tea.Quit
+	}
+
+	if key == "enter" || key == " " {
+		switch m.cursorInstall {
+		case 0: // Install XAMPP
+			if len(m.xamppVersions) == 0 {
+				versions, err := installer.FetchVersions()
+				if err != nil {
+					versions = []installer.Version{{Name: "Error fetching versions", DownloadURL: ""}}
+				}
+				m.xamppVersions = versions
+				m.cursorVersionRow = 0
+				m.cursorVersionCol = 0
+				m.selectedVersion = 0
+			}
+			m.installing = true
+		case 1: // Quit
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+// handleMainMenu processes keyboard input on the main service management
+// screen.
+func (m Model) handleMainMenu(key string) (tea.Model, tea.Cmd) {
+	row, col, quit := navigate(key, m.cursorRow, m.cursorCol, len(m.choices), 4)
+	m.cursorRow, m.cursorCol = row, col
+
+	if quit {
+		return m, tea.Quit
+	}
+
+	if key == "enter" || key == " " {
+		if col == 0 {
+			service := m.choices[m.cursorRow]
+			if m.isRunning(m.cursorRow) {
+				xampp.Control(service, "stop")
+			} else {
+				xampp.Control(service, "start")
+			}
+			m = m.refreshSnapshot()
+		}
+		// col 1 (port) and col 2 (config) have no action yet.
+		return m, nil
+	}
+
+	switch key {
+	case "e", "E":
+		xampp.Control("all", "restart")
+		m = m.refreshSnapshot()
+	case "x", "X":
+		xampp.Control("all", "stop")
+		m = m.refreshSnapshot()
+	case "r", "R":
+		xampp.Control("all", "start")
+		m = m.refreshSnapshot()
+	}
+
+	return m, nil
+}
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+// refreshSnapshot calls GetSnapshot once and updates all service state fields.
+// This replaces the three separate status-refresh blocks that were scattered
+// across the old Update function.
+func (m Model) refreshSnapshot() Model {
+	snap, err := xampp.GetSnapshot(backgroundCtx())
+	if err != nil {
+		return m
+	}
+	m.ApacheStatus = snap.Status.Apache
+	m.MySQLStatus = snap.Status.MySQL
+	m.FTPStatus = snap.Status.FTP
+
+	for i, svc := range m.choices {
+		info, ok := snap.Details[svc]
+		if !ok {
+			m.pids[i] = 0
+			m.ports[i] = ""
+			continue
+		}
+		var pid int
+		fmt.Sscanf(info.PID, "%d", &pid)
+		m.pids[i] = pid
+		m.ports[i] = info.Port
+	}
+	return m
+}
+
+// isRunning reports whether the service at the given table row is currently
+// running, using the authoritative status fields rather than the local
+// m.status slice that the old code maintained manually.
+func (m Model) isRunning(row int) bool {
+	switch m.choices[row] {
+	case "Apache":
+		return m.ApacheStatus
+	case "MySQL":
+		return m.MySQLStatus
+	case "FTP":
+		return m.FTPStatus
+	}
+	return false
+}
+
+// navigate handles directional key input and returns updated row/col and a
+// quit flag. It is the single source of truth for keyboard navigation across
+// all screens.
+func navigate(key string, row, col, maxRow, maxCol int) (newRow, newCol int, quit bool) {
 	newRow, newCol = row, col
 	switch key {
 	case "up", "w", "W", "↑":
@@ -40,178 +250,4 @@ func handleNavigation(key string, row, col, maxRow, maxCol int) (newRow, newCol 
 		quit = true
 	}
 	return
-}
-
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	       switch msg.(type) {
-	       case tickMsg:
-		       if status, err := services.GetXAMPPServiceStatus(); err == nil {
-			       m.ApacheStatus = status.Apache
-			       m.MySQLStatus = status.MySQL
-			       m.FTPStatus = status.FTP
-		       }
-		       // Obtener detalles (PID, puerto) y actualizar el modelo
-		       if details, err := services.GetXAMPPServiceDetails(); err == nil {
-			       for i, svc := range m.choices {
-				       info, ok := details[svc]
-				       if ok && info.PID != "" {
-					       // Convertir PID a int
-					       var pidInt int
-					       fmt.Sscanf(info.PID, "%d", &pidInt)
-					       m.pids[i] = pidInt
-				       } else {
-					       m.pids[i] = 0
-				       }
-				       if ok {
-					       m.ports[i] = info.Port
-				       } else {
-					       m.ports[i] = ""
-				       }
-			       }
-		       }
-		       return m, tickCmd()
-	}
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		key := msg.String()
-		// --- Selección de versión (tabla bidimensional) ---
-		if m.ShowNewView && m.installing {
-			// Si el panel de info está activo, navegar entre botones
-			if m.showVersionInfoPanel {
-				// Solo dos botones: 0=Install, 1=Quit
-				switch key {
-				case "left", "a", "A", "←":
-					if m.cursorVersionButton > 0 {
-						m.cursorVersionButton--
-					}
-				case "right", "d", "D", "→":
-					if m.cursorVersionButton < 1 {
-						m.cursorVersionButton++
-					}
-				case "q", "esc":
-					m.showVersionInfoPanel = false
-				case "enter", "space":
-					// Acción según botón
-					if m.cursorVersionButton == 0 {
-						services.InstalarXAMPP(m.xamppVersions[m.selectedVersion].Name)
-						m.showVersionInfoPanel = false
-					} else {
-						m.showVersionInfoPanel = false
-					}
-				}
-				return m, nil
-			}
-			// Parámetros de la tabla de versiones
-			numCols := 4
-			n := len(m.xamppVersions)
-			numRows := (n + numCols - 1) / numCols
-			row, col, quit := handleNavigation(key, m.cursorVersionRow, m.cursorVersionCol, numRows, numCols)
-			// Limitar el cursor a celdas válidas
-			idx := row + col*numRows
-			if idx >= n {
-				// Si la celda está fuera de rango, no mover el cursor
-				row, col = m.cursorVersionRow, m.cursorVersionCol
-			}
-			m.cursorVersionRow, m.cursorVersionCol = row, col
-			m.selectedVersion = idx
-			if key == "q" || key == "esc" {
-				m.installing = false
-			} else if key == "enter" || key == "space" {
-				// Activar panel de info
-				m.showVersionInfoPanel = true
-				m.cursorVersionButton = 0
-			}
-			if quit {
-				return m, tea.Quit
-			}
-			return m, nil
-		}
-		// --- Menú de instalación ---
-		if m.ShowNewView {
-			row, col, quit := handleNavigation(key, m.cursorInstall, m.cursorCol, len(m.optionsInstallation), 4)
-			m.cursorInstall, m.cursorCol = row, col
-			if quit {
-				return m, tea.Quit
-			}
-			if key == "enter" || key == "space" {
-				switch m.cursorInstall {
-				case 0: // "Install XAMPP"
-					if len(m.xamppVersions) == 0 {
-						versiones, err := services.ObtenerVersiones()
-						if err == nil {
-							m.xamppVersions = versiones
-						} else {
-							m.xamppVersions = []services.XAMPPVersion{{Name: "Error obteniendo versiones", DownloadURL: ""}}
-						}
-						m.cursorVersionRow = 0
-						m.cursorVersionCol = 0
-						m.selectedVersion = 0
-					}
-					m.installing = true
-				case 1: // "Quit/Exit"
-					return m, tea.Quit
-				}
-			}
-			return m, nil
-		}
-		// --- Menú principal (servicios) ---
-		row, col, quit := handleNavigation(key, m.cursorRow, m.cursorCol, len(m.choices), 4)
-		m.cursorRow, m.cursorCol = row, col
-		if quit {
-			return m, tea.Quit
-		}
-		if key == "enter" || key == "space" {
-			if m.installing {
-				// Ya no se usa aquí, la selección de versión está arriba
-				return m, nil
-			}
-			if m.cursorCol == 0 {
-				service := m.choices[m.cursorRow]
-				var serviceKey string
-				switch service {
-				case "Apache":
-					serviceKey = "apache"
-				case "MySQL":
-					serviceKey = "mysql"
-				case "FTP":
-					serviceKey = "ftp"
-				default:
-					serviceKey = service
-				}
-				if m.status[m.cursorRow] == "running" {
-					services.ControlXAMPPService(serviceKey, "stop")
-					m.status[m.cursorRow] = "stopped"
-				} else {
-					services.ControlXAMPPService(serviceKey, "start")
-					m.status[m.cursorRow] = "running"
-				}
-				if status, err := services.GetXAMPPServiceStatus(); err == nil {
-					m.ApacheStatus = status.Apache
-					m.MySQLStatus = status.MySQL
-					m.FTPStatus = status.FTP
-				}
-			} else if m.cursorCol == 1 {
-				// Acción para port
-			} else if m.cursorCol == 2 {
-				// Acción para config
-			}
-		}
-		switch key {
-		case "e", "E":
-			services.ControlXAMPPService("all", "restart")
-		case "x", "X":
-			services.ControlXAMPPService("all", "stop")
-		case "r", "R":
-			services.ControlXAMPPService("all", "start")
-		}
-		if key == "e" || key == "E" || key == "x" || key == "X" || key == "r" || key == "R" {
-			if status, err := services.GetXAMPPServiceStatus(); err == nil {
-				m.ApacheStatus = status.Apache
-				m.MySQLStatus = status.MySQL
-				m.FTPStatus = status.FTP
-			}
-		}
-		return m, nil
-	}
-	return m, nil
 }
