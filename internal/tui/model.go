@@ -40,6 +40,15 @@ type Model struct {
 	// Version info panel (shown after selecting a version)
 	showVersionInfoPanel bool
 	cursorVersionButton  int
+
+	// Download progress
+	downloading      bool
+	downloadProgress float64 // 0.0–1.0
+	downloadVersion  string
+	downloadError    string
+
+	// Recent activity log (capped at maxLogs entries)
+	logs []string
 }
 
 func InitialModel() Model {
@@ -54,6 +63,7 @@ func InitialModel() Model {
 		ApacheStatus:        status.Apache,
 		MySQLStatus:         status.MySQL,
 		FTPStatus:           status.FTP,
+		logs: xampp.RecentLogs(20),
 	}
 }
 

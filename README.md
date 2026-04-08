@@ -15,48 +15,51 @@
     - `←/→/a/d`: Cambiar de columna
     - `Enter`/`Espacio`: Cambiar estado o activar acción según la columna
 
-## Estructura recomendada de carpetas
+## Estructura real del proyecto
 
 ```
-└── 📁xampp-tui                # Raíz del proyecto
-    └── 📁assets               # Recursos estáticos y documentación
-        ├── README.md          # Descripción de recursos
-    └── 📁cmd                  # Entrypoints de la app
-        └── 📁lampp-tui        # Ejecutable principal
-            └── 📁downloads    # Descargas temporales de XAMPP
-            ├── main.go        # Main de la app TUI
-        └── 📁logs             # Archivos de logs de la app
-            ├── app.log        # Log principal de la aplicación
-    └── 📁internal             # Código fuente interno (no exportado)
-        └── 📁services         # Lógica de negocio y servicios
-            ├── downloader.go      # Descarga de instaladores XAMPP
-            ├── version_fetcher.go # Obtención de versiones
-            ├── xampp.go           # Lógica de gestión XAMPP
-        └── 📁state            # Estado global de la app
-            ├── app_state.go   # Definición y manejo de estado
-        └── 📁tui              # Lógica y componentes de la interfaz TUI
-            ├── model.go       # Modelo de datos para la TUI
-            ├── styles.go      # Estilos visuales
-            ├── update.go      # Actualización de estado/modelo
-            ├── utils.go       # Utilidades varias para la TUI
-            ├── view.go        # Renderizado de vistas
-    ├── .gitignore             # Archivos/carpetas ignorados por git
-    ├── go.mod                 # Dependencias y módulo Go
-    ├── go.sum                 # Sumas de verificación de dependencias
-    └── README.md              # Documentación principal del proyecto
+xampp-tui
+├── README.md
+├── assets
+│   └── README.md
+├── cmd
+│   ├── lampp-tui
+│   │   ├── downloads
+│   │   └── main.go
+│   └── logs
+│       └── app.log
+├── go.mod
+├── go.sum
+├── install.sh
+└── internal
+    ├── installer
+    │   ├── downloader.go
+    │   └── versions.go
+    ├── logger
+    │   └── logger.go
+    ├── tui
+    │   ├── model.go
+    │   ├── render.go
+    │   ├── styles.go
+    │   ├── update.go
+    │   └── view.go
+    └── xampp
+        ├── service.go
+        └── validator.go
 ```
 
-Esta estructura sigue las mejores prácticas de Go y Bubble Tea:
+**Notas sobre la estructura:**
 
-- Separación clara entre UI, servicios y estado.
-- Lógica de UI en `internal/tui/`.
-- Lógica de negocio y servicios en `internal/services/`.
-- Entrypoint limpio en `cmd/`.
-- Recursos y documentación organizados.
+- El entrypoint principal está en `cmd/lampp-tui/main.go`.
+- Los instaladores y lógica de descarga están en `internal/installer/`.
+- El logger propio está en `internal/logger/logger.go` y los logs se guardan en `cmd/logs/app.log`.
+- La lógica de la interfaz TUI está en `internal/tui/`.
+- La lógica de gestión de servicios XAMPP está en `internal/xampp/`.
+- Los recursos/documentación adicional van en `assets/`.
+- El directorio `downloads/` dentro de `cmd/lampp-tui/` almacena descargas temporales de instaladores.
+- El archivo `install.sh` automatiza la instalación y el servicio systemd.
 
-Puedes extender `internal/` para más módulos o componentes si tu proyecto crece.
-
-Puedes crear las carpetas `internal/` y `assets/` si tu proyecto crece o necesitas organizar mejor el código y recursos.
+Esta estructura sigue buenas prácticas de Go y Bubble Tea, separando claramente la UI, lógica de negocio y utilidades.
 
 ## Versionado
 
@@ -108,17 +111,28 @@ Logs De Acciones
     cd lampp-tui
     ```
 2. Instala dependencias:
+
     ```bash
     go mod tidy
     ```
+
 3. Ejecuta la aplicación:
+
     ```bash
-    go run main.go ui.go
+    go run cmd/lampp-tui/main.go
+    ```
+
+    O bien, instala y ejecuta como servicio con:
+
+    ```bash
+    ./install.sh
+    sudo systemctl status xampp-tui
+    sudo journalctl -u xampp-tui -f
     ```
 
 ## Personalización
 
-Puedes modificar los servicios, puertos y configuraciones iniciales en la función `initialModel()` de `main.go`.
+Puedes modificar los servicios, puertos y configuraciones iniciales en la función `InitialModel()` de `internal/tui/model.go`.
 
 ## Licencia
 

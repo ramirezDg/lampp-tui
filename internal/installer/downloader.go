@@ -2,60 +2,74 @@ package installer
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
-	"os/exec"
-	"strings"
+	"path/filepath"
 	"xampp-tui/internal/logger"
 )
 
 const downloadDir = "./downloads"
 
-// Install downloads the XAMPP installer for the given version name into the
-// local downloads directory using wget.
-func Install(version string) error {
+// ProgressFunc is called periodically during a download with the number of
+// bytes received so far and the total file size (-1 if unknown).
+type ProgressFunc func(downloaded, total int64)
+
+// Download downloads the XAMPP installer for the given version into the local
+// downloads directory via HTTP. If onProgress is non-nil it is called each
+// time a chunk is written to disk.
+func Download(version string, onProgress ProgressFunc) error {
 	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
-		logger.Write(fmt.Sprintf("error creating download dir: %v", err))
-		return fmt.Errorf("error creating download dir: %w", err)
+		return fmt.Errorf("creating download dir: %w", err)
 	}
 
 	url := fmt.Sprintf(
 		"https://sourceforge.net/projects/xampp/files/XAMPP%%20Linux/%s/xampp-linux-x64-%s-0-installer.run/download",
 		version, version,
 	)
+	logger.Write(fmt.Sprintf("downloading XAMPP %s from %s", version, url))
 
-	logger.Write(fmt.Sprintf("Installing XAMPP version: %s", version))
-	logger.Write(fmt.Sprintf("Downloading from: %s", url))
-	logger.Write(fmt.Sprintf("Destination: %s", downloadDir))
-	fmt.Printf("Downloading XAMPP %s...\n", version)
-
-	cmd := exec.Command("wget", "--content-disposition", "-P", downloadDir, url)
-	if err := cmd.Run(); err != nil {
-		logger.Write(fmt.Sprintf("download failed: %v", err))
-		return fmt.Errorf("download failed: %w", err)
-	}
-	logger.Write("wget completed")
-
-	entries, err := os.ReadDir(downloadDir)
+	resp, err := http.Get(url) //nolint:gosec // URL is constructed from a known safe pattern
 	if err != nil {
-		logger.Write(fmt.Sprintf("error reading download dir: %v", err))
-		return fmt.Errorf("error reading download dir: %w", err)
+		return fmt.Errorf("http get: %w", err)
 	}
+	defer resp.Body.Close()
 
-	found := false
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".run") {
-			logger.Write(fmt.Sprintf("downloaded file: %s", e.Name()))
-			fmt.Printf("Downloaded: %s\n", e.Name())
-			found = true
+	total := resp.ContentLength // -1 when unknown
+
+	dest := filepath.Join(downloadDir, fmt.Sprintf("xampp-linux-x64-%s-0-installer.run", version))
+	f, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("creating file: %w", err)
+	}
+	defer f.Close()
+
+	buf := make([]byte, 32*1024)
+	var downloaded int64
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := f.Write(buf[:n]); werr != nil {
+				return fmt.Errorf("writing file: %w", werr)
+			}
+			downloaded += int64(n)
+			if onProgress != nil {
+				onProgress(downloaded, total)
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return fmt.Errorf("reading response: %w", readErr)
 		}
 	}
-	if !found {
-		msg := "warning: no .run file found in downloads folder after download"
-		logger.Write(msg)
-		fmt.Println(msg)
-	} else {
-		logger.Write("download completed")
-		fmt.Println("Download completed.")
-	}
+
+	logger.Write(fmt.Sprintf("download complete: %s (%d bytes)", dest, downloaded))
 	return nil
+}
+
+// Install is the fire-and-forget wrapper used outside of the TUI flow.
+func Install(version string) error {
+	return Download(version, nil)
 }

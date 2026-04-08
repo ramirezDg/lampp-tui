@@ -10,6 +10,36 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// ─── download messages & commands ────────────────────────────────────────────
+
+type downloadProgressMsg struct{ pct float64 }
+type downloadDoneMsg struct{ err error }
+
+// dlCh is the channel through which the download goroutine feeds the TUI.
+var dlCh chan tea.Msg
+
+// startDownloadCmd kicks off the download goroutine and returns a cmd that
+// blocks until the first message arrives from it.
+func startDownloadCmd(version string) tea.Cmd {
+	dlCh = make(chan tea.Msg, 200)
+	return func() tea.Msg {
+		go func() {
+			err := installer.Download(version, func(done, total int64) {
+				if total > 0 {
+					dlCh <- downloadProgressMsg{pct: float64(done) / float64(total)}
+				}
+			})
+			dlCh <- downloadDoneMsg{err: err}
+		}()
+		return <-dlCh
+	}
+}
+
+// nextDownloadMsgCmd reads the next message from the active download channel.
+func nextDownloadMsgCmd() tea.Cmd {
+	return func() tea.Msg { return <-dlCh }
+}
+
 // backgroundCtx returns a plain background context. Centralised here so that
 // service calls throughout the TUI package are easy to swap for a cancelable
 // context later.
@@ -28,10 +58,23 @@ func tickCmd() tea.Cmd {
 // ─── Update ──────────────────────────────────────────────────────────────────
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg.(type) {
+	switch msg := msg.(type) {
 	case tickMsg:
 		m = m.refreshSnapshot()
+		m.logs = xampp.RecentLogs(20)
 		return m, tickCmd()
+
+	case downloadProgressMsg:
+		m.downloadProgress = msg.pct
+		return m, nextDownloadMsgCmd()
+
+	case downloadDoneMsg:
+		m.downloading = false
+		m.downloadProgress = 1.0
+		if msg.err != nil {
+			m.downloadError = msg.err.Error()
+		}
+		return m, nil
 	}
 
 	msg2, ok := msg.(tea.KeyPressMsg)
@@ -39,6 +82,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	key := msg2.String()
+
+	// While downloading, only allow quitting.
+	if m.downloading {
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
+		return m, nil
+	}
 
 	switch {
 	case m.ShowNewView && m.installing:
@@ -101,11 +152,16 @@ func (m Model) handleVersionInfoPanel(key string) (tea.Model, tea.Cmd) {
 		m.showVersionInfoPanel = false
 	case "enter", " ":
 		if m.cursorVersionButton == 0 {
-			installer.Install(m.xamppVersions[m.selectedVersion].Name)
+			ver := m.xamppVersions[m.selectedVersion].Name
 			m.showVersionInfoPanel = false
-		} else {
-			m.showVersionInfoPanel = false
+			m.installing = false
+			m.downloading = true
+			m.downloadProgress = 0
+			m.downloadVersion = ver
+			m.downloadError = ""
+			return m, startDownloadCmd(ver)
 		}
+		m.showVersionInfoPanel = false
 	}
 	return m, nil
 }
@@ -160,6 +216,7 @@ func (m Model) handleMainMenu(key string) (tea.Model, tea.Cmd) {
 				xampp.Control(service, "start")
 			}
 			m = m.refreshSnapshot()
+			m.logs = xampp.RecentLogs(20)
 		}
 		// col 1 (port) and col 2 (config) have no action yet.
 		return m, nil
@@ -169,12 +226,15 @@ func (m Model) handleMainMenu(key string) (tea.Model, tea.Cmd) {
 	case "e", "E":
 		xampp.Control("all", "restart")
 		m = m.refreshSnapshot()
+		m.logs = xampp.RecentLogs(20)
 	case "x", "X":
 		xampp.Control("all", "stop")
 		m = m.refreshSnapshot()
+		m.logs = xampp.RecentLogs(20)
 	case "r", "R":
 		xampp.Control("all", "start")
 		m = m.refreshSnapshot()
+		m.logs = xampp.RecentLogs(20)
 	}
 
 	return m, nil
