@@ -3,12 +3,32 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"time"
 	"xampp-tui/internal/installer"
 	"xampp-tui/internal/xampp"
 
 	tea "charm.land/bubbletea/v2"
 )
+
+// ─── column-action messages & commands ───────────────────────────────────────
+
+type editorClosedMsg struct{ err error }
+
+// openBrowserCmd launches xdg-open for a given URL (fire-and-forget).
+func openBrowserCmd(url string) tea.Cmd {
+	return func() tea.Msg {
+		exec.Command("xdg-open", url).Start() //nolint:errcheck
+		return nil
+	}
+}
+
+// openEditorCmd suspends the TUI, opens nano for path, then resumes.
+func openEditorCmd(path string) tea.Cmd {
+	return tea.ExecProcess(exec.Command("nano", path), func(err error) tea.Msg {
+		return editorClosedMsg{err: err}
+	})
+}
 
 // ─── download messages & commands ────────────────────────────────────────────
 
@@ -64,6 +84,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logs = xampp.RecentLogs(20)
 		return m, tickCmd()
 
+	case editorClosedMsg:
+		// Refresh after returning from nano.
+		m = m.refreshSnapshot()
+		m.logs = xampp.RecentLogs(20)
+		return m, nil
+
 	case downloadProgressMsg:
 		m.downloadProgress = msg.pct
 		return m, nextDownloadMsgCmd()
@@ -89,6 +115,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		return m, nil
+	}
+
+	if m.showDialog {
+		return m.handleDialog(key)
 	}
 
 	switch {
@@ -208,7 +238,8 @@ func (m Model) handleMainMenu(key string) (tea.Model, tea.Cmd) {
 	}
 
 	if key == "enter" || key == " " {
-		if col == 0 {
+		switch col {
+		case 0: // Toggle service start/stop.
 			service := m.choices[m.cursorRow]
 			if m.isRunning(m.cursorRow) {
 				xampp.Control(service, "stop")
@@ -217,8 +248,26 @@ func (m Model) handleMainMenu(key string) (tea.Model, tea.Cmd) {
 			}
 			m = m.refreshSnapshot()
 			m.logs = xampp.RecentLogs(20)
+
+		case 1: // PID → ask to kill process.
+			if m.pids[m.cursorRow] > 0 {
+				m.showDialog = true
+				m.dialogType = "kill"
+				m.dialogBtn = 1 // default No (safe)
+				m.dialogRow = m.cursorRow
+			}
+
+		case 2: // Port → open browser.
+			if port := m.ports[m.cursorRow]; port != "" {
+				return m, openBrowserCmd("http://localhost:" + port)
+			}
+
+		case 3: // Config → ask to open in editor.
+			m.showDialog = true
+			m.dialogType = "config"
+			m.dialogBtn = 0 // default Yes (non-destructive)
+			m.dialogRow = m.cursorRow
 		}
-		// col 1 (port) and col 2 (config) have no action yet.
 		return m, nil
 	}
 
@@ -237,6 +286,45 @@ func (m Model) handleMainMenu(key string) (tea.Model, tea.Cmd) {
 		m.logs = xampp.RecentLogs(20)
 	}
 
+	return m, nil
+}
+
+// ─── dialog handler ──────────────────────────────────────────────────────────
+
+// handleDialog processes keyboard input while a column-action dialog is open.
+func (m Model) handleDialog(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "left", "a", "A", "←":
+		if m.dialogBtn > 0 {
+			m.dialogBtn--
+		}
+	case "right", "d", "D", "→":
+		if m.dialogBtn < 1 {
+			m.dialogBtn++
+		}
+	case "esc", "q":
+		m.showDialog = false
+	case "enter", " ":
+		m.showDialog = false
+		if m.dialogBtn == 0 { // Yes
+			return m.executeDialogAction()
+		}
+		// No → just close
+	}
+	return m, nil
+}
+
+// executeDialogAction runs the confirmed action for the active dialog.
+func (m Model) executeDialogAction() (tea.Model, tea.Cmd) {
+	switch m.dialogType {
+	case "kill":
+		pid := fmt.Sprintf("%d", m.pids[m.dialogRow])
+		exec.Command("kill", pid).Run() //nolint:errcheck
+		m = m.refreshSnapshot()
+		m.logs = xampp.RecentLogs(20)
+	case "config":
+		return m, openEditorCmd(m.configPaths[m.dialogRow])
+	}
 	return m, nil
 }
 

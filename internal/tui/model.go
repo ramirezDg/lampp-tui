@@ -47,7 +47,16 @@ type Model struct {
 	downloadVersion  string
 	downloadError    string
 
-	// Recent activity log (capped at maxLogs entries)
+	// Column-action dialog (kill / edit-config)
+	showDialog bool
+	dialogType string // "kill" | "config"
+	dialogBtn  int    // 0=Yes  1=No
+	dialogRow  int    // service row that triggered the dialog
+
+	// Full config-file paths (parallel to choices/config display names).
+	configPaths []string
+
+	// Recent activity log (from XAMPP log file)
 	logs []string
 }
 
@@ -63,6 +72,11 @@ func InitialModel() Model {
 		ApacheStatus:        status.Apache,
 		MySQLStatus:         status.MySQL,
 		FTPStatus:           status.FTP,
+		configPaths: []string{
+			"/opt/lampp/etc/httpd.conf",
+			"/opt/lampp/etc/my.cnf",
+			"/opt/lampp/etc/proftpd.conf",
+		},
 		logs: xampp.RecentLogs(20),
 	}
 }

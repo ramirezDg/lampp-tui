@@ -285,6 +285,56 @@ func RenderVersionInfoPanel(downloadURL string, selectedButton int) string {
 	return panel.Render(info + "\n\n" + buttons)
 }
 
+// ─── action dialog ───────────────────────────────────────────────────────────
+
+// RenderActionDialog renders a confirmation dialog with Yes/No buttons.
+// selectedBtn: 0=Yes (active), 1=No (active).
+func RenderActionDialog(title, body string, selectedBtn int) string {
+	panel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorTitle).
+		Padding(1, 3).
+		Background(colorPanelBg).
+		Foreground(colorPanelFg)
+
+	titleStyle := lipgloss.NewStyle().Foreground(colorTitle).Bold(true)
+	bodyStyle := lipgloss.NewStyle().Foreground(colorPanelFg)
+
+	btn := lipgloss.NewStyle().
+		Padding(0, 2).
+		Margin(0, 1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
+		Foreground(colorMuted)
+
+	btnActive := lipgloss.NewStyle().
+		Padding(0, 2).
+		Margin(0, 1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorTitle).
+		Foreground(colorPanelBg).
+		Background(colorTitle).
+		Bold(true)
+
+	yesBtn := btn.Render("  Yes  ")
+	noBtn := btn.Render("  No   ")
+	if selectedBtn == 0 {
+		yesBtn = btnActive.Render("  Yes  ")
+	} else {
+		noBtn = btnActive.Render("  No   ")
+	}
+
+	buttons := lipgloss.JoinHorizontal(lipgloss.Top, yesBtn, noBtn)
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		titleStyle.Render(title),
+		"",
+		bodyStyle.Render(body),
+		"",
+		buttons,
+	)
+	return panel.Render(content)
+}
+
 // ─── list ────────────────────────────────────────────────────────────────────
 
 // RenderList renders a vertical menu list. Pass a nil selected map when

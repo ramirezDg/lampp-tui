@@ -80,15 +80,36 @@ func adminPane(m Model, w, h int) string {
 		logVisible = 1
 	}
 
-	// Log panel inner width matches the service table box.
-	// Table box outer width = tableW; inner = tableW - border(2) - padding(2*2) = tableW - 6.
-	logInnerW := tableW - 6
-	if logInnerW < 20 {
-		logInnerW = 20
+	// Log panel uses most of the terminal width to avoid line-wrapping.
+	// Leave ~20 chars for centering margins (10 each side).
+	logInnerW := w - 20
+	if logInnerW < tableW {
+		logInnerW = tableW // never narrower than the service table
 	}
 
 	logStr := lipgloss.PlaceHorizontal(w, lipgloss.Center,
 		RenderLogPanel(m.logs, logVisible, logInnerW))
+
+	// ── dialog overlay replaces log panel when active ──────────────────────
+	if m.showDialog {
+		var dlgTitle, dlgBody string
+		svc := m.choices[m.dialogRow]
+		switch m.dialogType {
+		case "kill":
+			dlgTitle = fmt.Sprintf("Kill %s process?", svc)
+			dlgBody = fmt.Sprintf("PID %d will receive SIGTERM.", m.pids[m.dialogRow])
+		case "config":
+			dlgTitle = fmt.Sprintf("Edit %s configuration?", svc)
+			dlgBody = m.configPaths[m.dialogRow]
+		}
+		dialogStr := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+			RenderActionDialog(dlgTitle, dlgBody, m.dialogBtn))
+
+		body := lipgloss.JoinVertical(lipgloss.Left,
+			tableStr, "", optStr, "", dialogStr)
+		below := lipgloss.Place(w, belowH, lipgloss.Center, lipgloss.Top, body)
+		return titleStr + "\n\n" + below
+	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		tableStr,
