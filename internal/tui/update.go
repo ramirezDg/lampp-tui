@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 	"xampp-tui/internal/installer"
 	"xampp-tui/internal/xampp"
@@ -16,10 +17,26 @@ import (
 
 type editorClosedMsg struct{ err error }
 
-// openBrowserCmd launches xdg-open for a given URL (fire-and-forget).
+// openBrowserCmd opens url in the system browser, detached from the TUI's
+// terminal session so it doesn't interfere with raw-mode input handling.
 func openBrowserCmd(url string) tea.Cmd {
 	return func() tea.Msg {
-		exec.Command("xdg-open", url).Start() //nolint:errcheck
+		for _, browser := range []string{"xdg-open", "sensible-browser", "x-www-browser"} {
+			if _, err := exec.LookPath(browser); err != nil {
+				continue
+			}
+			cmd := exec.Command(browser, url)
+			cmd.Stdin = nil
+			cmd.Stdout = nil
+			cmd.Stderr = nil
+			// Setsid creates a new session so the child is fully detached from
+			// the TUI's controlling terminal (raw mode). Without this xdg-open
+			// can silently fail inside Bubble Tea.
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+			if cmd.Start() == nil {
+				return nil
+			}
+		}
 		return nil
 	}
 }
@@ -227,9 +244,10 @@ func (m Model) handleVersionSelection(key string) (tea.Model, tea.Cmd) {
 
 	switch key {
 	case "q", "esc":
+		// Return early so the quit flag from navigate() doesn't trigger tea.Quit.
 		m.installing = false
-		// If XAMPP is installed, return to main screen.
 		m.ShowNewView = !xampp.IsInstalled()
+		return m, nil
 	case "enter", " ":
 		m.showVersionInfoPanel = true
 		m.cursorVersionButton = 0

@@ -97,13 +97,11 @@ func adminPane(m Model, w, h int) string {
 	rawTable := RenderTable(m)
 	tableW := lipgloss.Width(rawTable)
 	tableStr := lipgloss.PlaceHorizontal(w, lipgloss.Center, rawTable)
-	optStr := RenderOptions(w)
 
 	tableH := lipgloss.Height(tableStr)
-	optH := lipgloss.Height(optStr)
 
-	// Fixed area: version bar + blank + table + blank + options + blank before log.
-	fixedH := versionBarH + 1 + tableH + 1 + optH + 1
+	// Fixed area: version bar + blank line + table + blank line before log.
+	fixedH := versionBarH + 1 + tableH + 1
 
 	logPanelH := belowH - fixedH
 	const minLogPanel = 5
@@ -135,7 +133,7 @@ func adminPane(m Model, w, h int) string {
 			RenderActionDialog(dlgTitle, dlgBody, m.dialogBtn))
 
 		body := lipgloss.JoinVertical(lipgloss.Left,
-			versionBar, tableStr, "", optStr, "", dialogStr)
+			versionBar, tableStr, "", dialogStr)
 		below := lipgloss.Place(w, belowH, lipgloss.Center, lipgloss.Top, body)
 		return titleStr + "\n\n" + below
 	}
@@ -143,8 +141,6 @@ func adminPane(m Model, w, h int) string {
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		versionBar,
 		tableStr,
-		"",
-		optStr,
 		"",
 		logStr,
 	)
@@ -159,6 +155,9 @@ func versionsMgmtPane(m Model, w, h int) string {
 
 	heading := lipgloss.NewStyle().Foreground(colorMuted).Bold(true).
 		Render("Installed XAMPP Versions")
+
+	pathNote := lipgloss.NewStyle().Foreground(colorBorder).Italic(true).
+		Render("Switching updates /opt/lampp symlink only — no shell or PATH config is modified.")
 
 	table := RenderInstalledVersionsTable(m)
 
@@ -177,6 +176,7 @@ func versionsMgmtPane(m Model, w, h int) string {
 	} else {
 		body = lipgloss.JoinVertical(lipgloss.Center,
 			lipgloss.PlaceHorizontal(w, lipgloss.Center, heading),
+			lipgloss.PlaceHorizontal(w, lipgloss.Center, pathNote),
 			"",
 			lipgloss.PlaceHorizontal(w, lipgloss.Center, table),
 		)
@@ -372,7 +372,12 @@ func dialogTitleBody(m Model) (title, body string) {
 		if m.dialogRow < len(m.installedVersions) {
 			ver := m.installedVersions[m.dialogRow]
 			return fmt.Sprintf("Switch to XAMPP %s?", ver.Version),
-				fmt.Sprintf("Path: %s\nRestart services after switching.", ver.Path)
+				fmt.Sprintf(
+					"Only /opt/lampp symlink is updated.\n"+
+						"No PATH or shell config is modified.\n\n"+
+						"Stop running services before switching,\n"+
+						"then restart them with the new version.\n\n"+
+						"Path: %s", ver.Path)
 		}
 	}
 	return "Confirm?", ""
