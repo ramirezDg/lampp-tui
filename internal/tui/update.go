@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"time"
 	"xampp-tui/internal/installer"
 	"xampp-tui/internal/xampp"
@@ -60,9 +61,34 @@ func nextDownloadMsgCmd() tea.Cmd {
 	return func() tea.Msg { return <-dlCh }
 }
 
-// backgroundCtx returns a plain background context. Centralised here so that
-// service calls throughout the TUI package are easy to swap for a cancelable
-// context later.
+// ─── installer messages & commands ───────────────────────────────────────────
+
+type installerProgressMsg struct{ status string }
+type installerDoneMsg struct{ err error }
+
+var installCh chan tea.Msg
+
+// startInstallerCmd runs the XAMPP .run installer in a goroutine and pipes
+// progress/done messages back to the TUI.
+func startInstallerCmd(version string) tea.Cmd {
+	installCh = make(chan tea.Msg, 50)
+	return func() tea.Msg {
+		go func() {
+			err := installer.RunInstaller(version, func(msg string) {
+				installCh <- installerProgressMsg{status: msg}
+			})
+			installCh <- installerDoneMsg{err: err}
+		}()
+		return <-installCh
+	}
+}
+
+func nextInstallerMsgCmd() tea.Cmd {
+	return func() tea.Msg { return <-installCh }
+}
+
+// ─── background context ───────────────────────────────────────────────────────
+
 func backgroundCtx() context.Context { return context.Background() }
 
 // ─── tick ────────────────────────────────────────────────────────────────────
@@ -85,7 +111,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case editorClosedMsg:
-		// Refresh after returning from nano.
 		m = m.refreshSnapshot()
 		m.logs = xampp.RecentLogs(20)
 		return m, nil
@@ -99,6 +124,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.downloadProgress = 1.0
 		if msg.err != nil {
 			m.downloadError = msg.err.Error()
+		} else {
+			// Offer to install the downloaded version.
+			m.postDownload = true
+			m.postDownloadBtn = 0
+		}
+		return m, nil
+
+	case installerProgressMsg:
+		m.installerStatus = msg.status
+		return m, nextInstallerMsgCmd()
+
+	case installerDoneMsg:
+		m.runningInstaller = false
+		if msg.err != nil {
+			m.installerError = msg.err.Error()
+			m.installerStatus = ""
+		} else {
+			m.installerStatus = "Installation complete!"
+			// Create/update the /opt/lampp symlink to the new installation.
+			targetDir := filepath.Join(installer.XAMPPBaseDir, m.downloadVersion)
+			xampp.SwitchVersion(targetDir) //nolint:errcheck
+			// Refresh everything.
+			m.installedVersions = xampp.ScanInstalledVersions()
+			m = m.refreshSnapshot()
+			m.logs = xampp.RecentLogs(20)
+			m.ShowNewView = !xampp.IsInstalled()
 		}
 		return m, nil
 	}
@@ -109,12 +160,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	key := msg2.String()
 
-	// While downloading, only allow quitting.
+	// While installer is running, only allow quit.
+	if m.runningInstaller {
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+
+	// While downloading, only allow quit.
 	if m.downloading {
 		if key == "ctrl+c" {
 			return m, tea.Quit
 		}
 		return m, nil
+	}
+
+	// Post-download install prompt.
+	if m.postDownload {
+		return m.handlePostDownload(key)
+	}
+
+	// Versions management panel (with possible dialog overlay).
+	if m.showVersionsPanel {
+		if m.showDialog {
+			return m.handleDialog(key)
+		}
+		return m.handleVersionsMgmt(key)
 	}
 
 	if m.showDialog {
@@ -156,6 +228,8 @@ func (m Model) handleVersionSelection(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "q", "esc":
 		m.installing = false
+		// If XAMPP is installed, return to main screen.
+		m.ShowNewView = !xampp.IsInstalled()
 	case "enter", " ":
 		m.showVersionInfoPanel = true
 		m.cursorVersionButton = 0
@@ -185,6 +259,7 @@ func (m Model) handleVersionInfoPanel(key string) (tea.Model, tea.Cmd) {
 			ver := m.xamppVersions[m.selectedVersion].Name
 			m.showVersionInfoPanel = false
 			m.installing = false
+			m.ShowNewView = false
 			m.downloading = true
 			m.downloadProgress = 0
 			m.downloadVersion = ver
@@ -196,8 +271,8 @@ func (m Model) handleVersionInfoPanel(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleInstallMenu processes keyboard input on the "XAMPP not installed" welcome
-// screen.
+// handleInstallMenu processes keyboard input on the "XAMPP not installed"
+// welcome screen.
 func (m Model) handleInstallMenu(key string) (tea.Model, tea.Cmd) {
 	row, _, quit := navigate(key, m.cursorInstall, 0, len(m.optionsInstallation), 1)
 	m.cursorInstall = row
@@ -257,8 +332,9 @@ func (m Model) handleMainMenu(key string) (tea.Model, tea.Cmd) {
 				m.dialogRow = m.cursorRow
 			}
 
-		case 2: // Port → open browser.
-			if port := m.ports[m.cursorRow]; port != "" {
+		case 2: // Port → open in browser (only when running and port is valid).
+			port := m.ports[m.cursorRow]
+			if m.isRunning(m.cursorRow) && port != "" && port != "N/A" {
 				return m, openBrowserCmd("http://localhost:" + port)
 			}
 
@@ -284,14 +360,95 @@ func (m Model) handleMainMenu(key string) (tea.Model, tea.Cmd) {
 		xampp.Control("all", "start")
 		m = m.refreshSnapshot()
 		m.logs = xampp.RecentLogs(20)
+	case "v", "V":
+		// Open the installed-versions management panel.
+		m.showVersionsPanel = true
+		m.installedVersions = xampp.ScanInstalledVersions()
+		m.cursorVersionsMgmt = 0
+	case "i", "I":
+		// Open version picker to download/install a new XAMPP version.
+		if len(m.xamppVersions) == 0 {
+			versions, err := installer.FetchVersions()
+			if err != nil {
+				versions = []installer.Version{{Name: "Error fetching versions", DownloadURL: ""}}
+			}
+			m.xamppVersions = versions
+			m.cursorVersionRow = 0
+			m.cursorVersionCol = 0
+			m.selectedVersion = 0
+		}
+		m.ShowNewView = true
+		m.installing = true
 	}
 
 	return m, nil
 }
 
+// handleVersionsMgmt processes keyboard input in the installed-versions panel.
+func (m Model) handleVersionsMgmt(key string) (tea.Model, tea.Cmd) {
+	n := len(m.installedVersions)
+
+	switch key {
+	case "up", "w", "W", "↑":
+		if m.cursorVersionsMgmt > 0 {
+			m.cursorVersionsMgmt--
+		}
+	case "down", "s", "S", "↓":
+		if m.cursorVersionsMgmt < n-1 {
+			m.cursorVersionsMgmt++
+		}
+	case "q", "esc":
+		m.showVersionsPanel = false
+	case "enter", " ":
+		if n > 0 && m.cursorVersionsMgmt < n {
+			ver := m.installedVersions[m.cursorVersionsMgmt]
+			if !ver.IsActive {
+				m.showDialog = true
+				m.dialogType = "switch_version"
+				m.dialogBtn = 0
+				m.dialogRow = m.cursorVersionsMgmt
+			}
+		}
+	case "ctrl+c":
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+// handlePostDownload processes keyboard input on the post-download install
+// prompt screen.
+func (m Model) handlePostDownload(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "left", "a", "A", "←":
+		if m.postDownloadBtn > 0 {
+			m.postDownloadBtn--
+		}
+	case "right", "d", "D", "→":
+		if m.postDownloadBtn < 1 {
+			m.postDownloadBtn++
+		}
+	case "q", "esc":
+		m.postDownload = false
+		m.ShowNewView = !xampp.IsInstalled()
+	case "enter", " ":
+		if m.postDownloadBtn == 0 { // Install Now
+			m.postDownload = false
+			m.runningInstaller = true
+			m.installerStatus = "Starting installer…"
+			m.installerError = ""
+			return m, startInstallerCmd(m.downloadVersion)
+		}
+		// Skip
+		m.postDownload = false
+		m.ShowNewView = !xampp.IsInstalled()
+	case "ctrl+c":
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
 // ─── dialog handler ──────────────────────────────────────────────────────────
 
-// handleDialog processes keyboard input while a column-action dialog is open.
 func (m Model) handleDialog(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "left", "a", "A", "←":
@@ -309,7 +466,6 @@ func (m Model) handleDialog(key string) (tea.Model, tea.Cmd) {
 		if m.dialogBtn == 0 { // Yes
 			return m.executeDialogAction()
 		}
-		// No → just close
 	}
 	return m, nil
 }
@@ -322,17 +478,25 @@ func (m Model) executeDialogAction() (tea.Model, tea.Cmd) {
 		exec.Command("kill", pid).Run() //nolint:errcheck
 		m = m.refreshSnapshot()
 		m.logs = xampp.RecentLogs(20)
+
 	case "config":
 		return m, openEditorCmd(m.configPaths[m.dialogRow])
+
+	case "switch_version":
+		if m.dialogRow < len(m.installedVersions) {
+			ver := m.installedVersions[m.dialogRow]
+			if err := xampp.SwitchVersion(ver.Path); err == nil {
+				m.installedVersions = xampp.ScanInstalledVersions()
+				m = m.refreshSnapshot()
+				m.logs = xampp.RecentLogs(20)
+			}
+		}
 	}
 	return m, nil
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-// refreshSnapshot calls GetSnapshot once and updates all service state fields.
-// This replaces the three separate status-refresh blocks that were scattered
-// across the old Update function.
 func (m Model) refreshSnapshot() Model {
 	snap, err := xampp.GetSnapshot(backgroundCtx())
 	if err != nil {
@@ -357,9 +521,6 @@ func (m Model) refreshSnapshot() Model {
 	return m
 }
 
-// isRunning reports whether the service at the given table row is currently
-// running, using the authoritative status fields rather than the local
-// m.status slice that the old code maintained manually.
 func (m Model) isRunning(row int) bool {
 	switch m.choices[row] {
 	case "Apache":
@@ -373,8 +534,7 @@ func (m Model) isRunning(row int) bool {
 }
 
 // navigate handles directional key input and returns updated row/col and a
-// quit flag. It is the single source of truth for keyboard navigation across
-// all screens.
+// quit flag. Single source of truth for keyboard navigation across all screens.
 func navigate(key string, row, col, maxRow, maxCol int) (newRow, newCol int, quit bool) {
 	newRow, newCol = row, col
 	switch key {

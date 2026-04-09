@@ -10,14 +10,14 @@ import (
 // Model is the central BubbleTea state for the application. It is immutable
 // between updates — Update always returns a new copy.
 type Model struct {
-	// Service runtime state
+	// ── Service runtime state ─────────────────────────────────────────────────
 	ApacheStatus bool
 	MySQLStatus  bool
 	FTPStatus    bool
 	pids         []int
 	ports        []string
 
-	// Main service table
+	// ── Main service table ────────────────────────────────────────────────────
 	choices []string
 	config  []string
 
@@ -25,7 +25,7 @@ type Model struct {
 	cursorRow int
 	cursorCol int
 
-	// Installation flow
+	// ── Install / version-picker flow ─────────────────────────────────────────
 	ShowNewView         bool
 	installing          bool
 	xamppVersions       []installer.Version
@@ -37,36 +37,52 @@ type Model struct {
 	cursorVersionRow int
 	cursorVersionCol int
 
-	// Version info panel (shown after selecting a version)
+	// Version info panel (shown after selecting a version in the picker)
 	showVersionInfoPanel bool
 	cursorVersionButton  int
 
-	// Download progress
+	// ── Download progress ─────────────────────────────────────────────────────
 	downloading      bool
 	downloadProgress float64 // 0.0–1.0
 	downloadVersion  string
 	downloadError    string
 
-	// Column-action dialog (kill / edit-config)
-	showDialog bool
-	dialogType string // "kill" | "config"
-	dialogBtn  int    // 0=Yes  1=No
-	dialogRow  int    // service row that triggered the dialog
+	// ── Post-download install prompt ──────────────────────────────────────────
+	postDownload    bool
+	postDownloadBtn int // 0=Install  1=Skip
 
-	// Full config-file paths (parallel to choices/config display names).
+	// ── XAMPP installer runner ────────────────────────────────────────────────
+	runningInstaller bool
+	installerStatus  string
+	installerError   string
+
+	// ── Installed versions management panel ───────────────────────────────────
+	showVersionsPanel  bool
+	installedVersions  []xampp.InstalledVersion
+	cursorVersionsMgmt int
+
+	// ── Column-action dialog (kill / config / switch_version) ─────────────────
+	showDialog bool
+	dialogType string // "kill" | "config" | "switch_version"
+	dialogBtn  int    // 0=Yes  1=No
+	dialogRow  int    // service row or version index that triggered the dialog
+
+	// ── Config-file paths (parallel to choices/config display names) ──────────
 	configPaths []string
 
-	// Recent activity log (from XAMPP log file)
+	// ── Recent activity log (from XAMPP log file) ─────────────────────────────
 	logs []string
 }
 
 func InitialModel() Model {
 	status, _ := xampp.GetServiceStatus(backgroundCtx())
+	installed := xampp.ScanInstalledVersions()
+
 	return Model{
 		choices:             []string{"Apache", "MySQL", "FTP"},
 		pids:                []int{0, 0, 0},
 		ports:               []string{"", "", ""},
-		config:              []string{"httpd.conf", "my.ini", "vsftpd.conf"},
+		config:              []string{"httpd.conf", "my.cnf", "proftpd.conf"},
 		ShowNewView:         !xampp.IsInstalled(),
 		optionsInstallation: []string{"Install XAMPP", "Quit/Exit"},
 		ApacheStatus:        status.Apache,
@@ -77,7 +93,8 @@ func InitialModel() Model {
 			"/opt/lampp/etc/my.cnf",
 			"/opt/lampp/etc/proftpd.conf",
 		},
-		logs: xampp.RecentLogs(20),
+		logs:              xampp.RecentLogs(20),
+		installedVersions: installed,
 	}
 }
 

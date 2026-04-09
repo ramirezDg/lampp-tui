@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
@@ -12,8 +13,7 @@ import (
 func (m Model) View() tea.View {
 	w, h := terminalSize()
 
-	// Reserve space for the footer so it never overlaps content.
-	footerStr := RenderFooter(w)
+	footerStr := contextFooter(m, w)
 	footerH := lipgloss.Height(footerStr)
 	mainH := h - footerH - 2 // -2 for the \n\n separator before the footer
 	if mainH < 10 {
@@ -22,8 +22,14 @@ func (m Model) View() tea.View {
 
 	var content string
 	switch {
+	case m.runningInstaller:
+		content = installerPane(m, w, mainH)
+	case m.postDownload:
+		content = postDownloadPane(m, w, mainH)
 	case m.downloading:
 		content = downloadPane(m, w, mainH)
+	case m.showVersionsPanel:
+		content = versionsMgmtPane(m, w, mainH)
 	case m.ShowNewView:
 		content = installPane(m, w, mainH)
 	default:
@@ -34,16 +40,48 @@ func (m Model) View() tea.View {
 }
 
 // paneHeader renders the title with a small top margin and returns the height
-// remaining for the pane body below it. The 2-line top pad keeps the title
-// from sitting flush against the top edge of the terminal.
+// remaining for the pane body below it.
 func paneHeader(w, h int) (titleStr string, belowH int) {
 	titleStr = "\n\n" + RenderTitle(w)
 	titleH := lipgloss.Height(titleStr)
-	belowH = h - titleH - 2 // -2 for the "\n\n" gap before body
+	belowH = h - titleH - 2
 	if belowH < 1 {
 		belowH = 1
 	}
 	return
+}
+
+// ─── context-aware footer ─────────────────────────────────────────────────────
+
+func contextFooter(m Model, w int) string {
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render("·")
+	key := lipgloss.NewStyle().Foreground(colorTitle).Bold(true)
+	desc := lipgloss.NewStyle().Foreground(colorMuted)
+
+	hint := func(k, d string) string {
+		return key.Render(k) + desc.Render(" "+d)
+	}
+	join := func(hints ...string) string {
+		return strings.Join(hints, "  "+sep+"  ")
+	}
+
+	navLine := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+		join(hint("↑↓←→/wasd", "Navigate"), hint("Enter/Space", "Action"), hint("q", "Quit")))
+
+	switch {
+	case m.showVersionsPanel:
+		extra := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+			join(hint("Enter", "Switch version"), hint("q/Esc", "Back")))
+		return navLine + "\n" + extra
+
+	case !m.ShowNewView && !m.downloading && !m.postDownload && !m.runningInstaller:
+		extra := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+			join(hint("e", "Start all"), hint("x", "Stop all"), hint("r", "Restart all"),
+				hint("v", "Versions"), hint("i", "Install")))
+		return navLine + "\n" + extra
+	}
+
+	return navLine
 }
 
 // ─── panes ───────────────────────────────────────────────────────────────────
@@ -51,6 +89,10 @@ func paneHeader(w, h int) (titleStr string, belowH int) {
 // adminPane renders the main service management screen.
 func adminPane(m Model, w, h int) string {
 	titleStr, belowH := paneHeader(w, h)
+
+	// Active version info bar (may be empty if no versions are scanned yet).
+	versionBar := RenderActiveVersionBar(m.installedVersions, w)
+	versionBarH := lipgloss.Height(versionBar)
 
 	rawTable := RenderTable(m)
 	tableW := lipgloss.Width(rawTable)
@@ -60,13 +102,12 @@ func adminPane(m Model, w, h int) string {
 	tableH := lipgloss.Height(tableStr)
 	optH := lipgloss.Height(optStr)
 
-	// Fixed area: table + blank line + options + blank line before log panel.
-	fixedH := tableH + 1 + optH + 1
+	// Fixed area: version bar + blank + table + blank + options + blank before log.
+	fixedH := versionBarH + 1 + tableH + 1 + optH + 1
 
-	// Give remaining space to the log panel, capped to keep it compact.
 	logPanelH := belowH - fixedH
 	const minLogPanel = 5
-	const maxLogPanel = 8 // border(2) + header(1) + sep(1) + 4 log rows
+	const maxLogPanel = 8
 	if logPanelH < minLogPanel {
 		logPanelH = minLogPanel
 	}
@@ -74,17 +115,14 @@ func adminPane(m Model, w, h int) string {
 		logPanelH = maxLogPanel
 	}
 
-	// Inner content rows = total panel height minus border(2) + header(1) + sep(1).
 	logVisible := logPanelH - 4
 	if logVisible < 1 {
 		logVisible = 1
 	}
 
-	// Log panel uses most of the terminal width to avoid line-wrapping.
-	// Leave ~20 chars for centering margins (10 each side).
 	logInnerW := w - 20
 	if logInnerW < tableW {
-		logInnerW = tableW // never narrower than the service table
+		logInnerW = tableW
 	}
 
 	logStr := lipgloss.PlaceHorizontal(w, lipgloss.Center,
@@ -92,26 +130,18 @@ func adminPane(m Model, w, h int) string {
 
 	// ── dialog overlay replaces log panel when active ──────────────────────
 	if m.showDialog {
-		var dlgTitle, dlgBody string
-		svc := m.choices[m.dialogRow]
-		switch m.dialogType {
-		case "kill":
-			dlgTitle = fmt.Sprintf("Kill %s process?", svc)
-			dlgBody = fmt.Sprintf("PID %d will receive SIGTERM.", m.pids[m.dialogRow])
-		case "config":
-			dlgTitle = fmt.Sprintf("Edit %s configuration?", svc)
-			dlgBody = m.configPaths[m.dialogRow]
-		}
+		dlgTitle, dlgBody := dialogTitleBody(m)
 		dialogStr := lipgloss.PlaceHorizontal(w, lipgloss.Center,
 			RenderActionDialog(dlgTitle, dlgBody, m.dialogBtn))
 
 		body := lipgloss.JoinVertical(lipgloss.Left,
-			tableStr, "", optStr, "", dialogStr)
+			versionBar, tableStr, "", optStr, "", dialogStr)
 		below := lipgloss.Place(w, belowH, lipgloss.Center, lipgloss.Top, body)
 		return titleStr + "\n\n" + below
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
+		versionBar,
 		tableStr,
 		"",
 		optStr,
@@ -119,8 +149,39 @@ func adminPane(m Model, w, h int) string {
 		logStr,
 	)
 
-	// Top-align so the content starts right below the title gap and the log
-	// panel naturally fills down from the service table.
+	below := lipgloss.Place(w, belowH, lipgloss.Center, lipgloss.Top, body)
+	return titleStr + "\n\n" + below
+}
+
+// versionsMgmtPane renders the installed-versions management screen.
+func versionsMgmtPane(m Model, w, h int) string {
+	titleStr, belowH := paneHeader(w, h)
+
+	heading := lipgloss.NewStyle().Foreground(colorMuted).Bold(true).
+		Render("Installed XAMPP Versions")
+
+	table := RenderInstalledVersionsTable(m)
+
+	var body string
+	if m.showDialog {
+		dlgTitle, dlgBody := dialogTitleBody(m)
+		dlg := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+			RenderActionDialog(dlgTitle, dlgBody, m.dialogBtn))
+		body = lipgloss.JoinVertical(lipgloss.Center,
+			lipgloss.PlaceHorizontal(w, lipgloss.Center, heading),
+			"",
+			lipgloss.PlaceHorizontal(w, lipgloss.Center, table),
+			"",
+			dlg,
+		)
+	} else {
+		body = lipgloss.JoinVertical(lipgloss.Center,
+			lipgloss.PlaceHorizontal(w, lipgloss.Center, heading),
+			"",
+			lipgloss.PlaceHorizontal(w, lipgloss.Center, table),
+		)
+	}
+
 	below := lipgloss.Place(w, belowH, lipgloss.Center, lipgloss.Top, body)
 	return titleStr + "\n\n" + below
 }
@@ -149,7 +210,7 @@ func downloadPane(m Model, w, h int) string {
 	bar := RenderProgressBar(m.downloadProgress, barWidth)
 
 	label := lipgloss.NewStyle().Foreground(colorText).Bold(true).
-		Render(fmt.Sprintf("Downloading XAMPP %s...", m.downloadVersion))
+		Render(fmt.Sprintf("Downloading XAMPP %s…", m.downloadVersion))
 
 	var statusLine string
 	switch {
@@ -164,11 +225,80 @@ func downloadPane(m Model, w, h int) string {
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Center,
-		label,
-		"",
-		bar,
-		"",
-		statusLine,
+		label, "", bar, "", statusLine,
+	)
+
+	below := lipgloss.Place(w, belowH, lipgloss.Center, lipgloss.Center,
+		lipgloss.PlaceHorizontal(w, lipgloss.Center, content))
+	return titleStr + "\n\n" + below
+}
+
+// postDownloadPane renders the "install now?" prompt after a download completes.
+func postDownloadPane(m Model, w, h int) string {
+	titleStr, belowH := paneHeader(w, h)
+
+	label := lipgloss.NewStyle().Foreground(colorText).Bold(true).
+		Render(fmt.Sprintf("Download complete: XAMPP %s", m.downloadVersion))
+
+	sublabel := lipgloss.NewStyle().Foreground(colorMuted).
+		Render("Would you like to install it now?")
+
+	destination := lipgloss.NewStyle().Foreground(colorMuted).
+		Render(fmt.Sprintf("Target: /opt/xampp/%s/", m.downloadVersion))
+
+	btn := lipgloss.NewStyle().
+		Padding(0, 2).Margin(0, 1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
+		Foreground(colorMuted)
+
+	btnActive := lipgloss.NewStyle().
+		Padding(0, 2).Margin(0, 1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorTitle).
+		Foreground(colorPanelBg).
+		Background(colorTitle).
+		Bold(true)
+
+	installBtn := btn.Render("  Install Now  ")
+	skipBtn := btn.Render("  Skip  ")
+	if m.postDownloadBtn == 0 {
+		installBtn = btnActive.Render("  Install Now  ")
+	} else {
+		skipBtn = btnActive.Render("  Skip  ")
+	}
+
+	buttons := lipgloss.JoinHorizontal(lipgloss.Top, installBtn, skipBtn)
+
+	content := lipgloss.JoinVertical(lipgloss.Center,
+		label, "", sublabel, destination, "", buttons,
+	)
+
+	below := lipgloss.Place(w, belowH, lipgloss.Center, lipgloss.Center,
+		lipgloss.PlaceHorizontal(w, lipgloss.Center, content))
+	return titleStr + "\n\n" + below
+}
+
+// installerPane renders the progress screen while the XAMPP installer runs.
+func installerPane(m Model, w, h int) string {
+	titleStr, belowH := paneHeader(w, h)
+
+	label := lipgloss.NewStyle().Foreground(colorText).Bold(true).
+		Render(fmt.Sprintf("Installing XAMPP %s…", m.downloadVersion))
+
+	var statusLine string
+	if m.installerError != "" {
+		statusLine = lipgloss.NewStyle().Foreground(colorError).
+			Render("Error: " + m.installerError)
+	} else {
+		statusLine = lipgloss.NewStyle().Foreground(colorMuted).Render(m.installerStatus)
+	}
+
+	notice := lipgloss.NewStyle().Foreground(colorTitle).Bold(true).
+		Render("Please wait, this may take a few minutes…")
+
+	content := lipgloss.JoinVertical(lipgloss.Center,
+		label, "", statusLine, "", notice,
 	)
 
 	below := lipgloss.Place(w, belowH, lipgloss.Center, lipgloss.Center,
@@ -190,7 +320,7 @@ func versionPickerContent(m Model) string {
 	}
 
 	heading := lipgloss.NewStyle().Foreground(colorMuted).Bold(true).
-		Render("Select the XAMPP version:")
+		Render("Select a XAMPP version to download:")
 
 	table := RenderVersionTable(versionTableData{
 		Versions:        names,
@@ -222,10 +352,34 @@ func welcomeContent(m Model) string {
 	return lipgloss.NewStyle().Align(lipgloss.Left).Render(text)
 }
 
+// ─── dialog helpers ───────────────────────────────────────────────────────────
+
+// dialogTitleBody returns the title and body text for the active dialog.
+func dialogTitleBody(m Model) (title, body string) {
+	svc := ""
+	if m.dialogRow < len(m.choices) {
+		svc = m.choices[m.dialogRow]
+	}
+
+	switch m.dialogType {
+	case "kill":
+		return fmt.Sprintf("Kill %s process?", svc),
+			fmt.Sprintf("PID %d will receive SIGTERM.", m.pids[m.dialogRow])
+	case "config":
+		return fmt.Sprintf("Edit %s config?", svc),
+			m.configPaths[m.dialogRow]
+	case "switch_version":
+		if m.dialogRow < len(m.installedVersions) {
+			ver := m.installedVersions[m.dialogRow]
+			return fmt.Sprintf("Switch to XAMPP %s?", ver.Version),
+				fmt.Sprintf("Path: %s\nRestart services after switching.", ver.Path)
+		}
+	}
+	return "Confirm?", ""
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-// terminalSize returns the current terminal dimensions, falling back to 80×24
-// when the size cannot be determined (e.g. in tests or pipes).
 func terminalSize() (width, height int) {
 	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
 		return w, h

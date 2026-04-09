@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"xampp-tui/internal/xampp"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -90,6 +91,26 @@ func TextArea(content string) string {
 		Render(content)
 }
 
+// ─── active version bar ───────────────────────────────────────────────────────
+
+// RenderActiveVersionBar renders a subtle one-line bar showing the active
+// XAMPP version's PHP and MySQL versions. Returns an empty string if no active
+// version is found.
+func RenderActiveVersionBar(versions []xampp.InstalledVersion, width int) string {
+	for _, v := range versions {
+		if !v.IsActive {
+			continue
+		}
+		dot := lipgloss.NewStyle().Foreground(colorSuccess).Render("●")
+		label := lipgloss.NewStyle().Foreground(colorMuted).
+			Render(fmt.Sprintf(" XAMPP %s   PHP %s   MySQL %s",
+				v.Version, v.PHPVersion, v.MySQLVersion))
+		line := dot + label
+		return lipgloss.PlaceHorizontal(width, lipgloss.Center, line)
+	}
+	return ""
+}
+
 // ─── service table ───────────────────────────────────────────────────────────
 
 const columnWidth = 18
@@ -126,7 +147,6 @@ func RenderTable(m Model) string {
 	for i, svc := range m.choices {
 		running := m.isRunning(i)
 
-		// Status dot + service name (dot takes 2 chars: dot + space).
 		dot := "○"
 		statusColor := colorError
 		if running {
@@ -173,7 +193,6 @@ func RenderTable(m Model) string {
 		lipgloss.JoinVertical(lipgloss.Left, rows...),
 	)
 
-	// Wrap the table in a subtle border box.
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorBorder).
@@ -182,7 +201,96 @@ func RenderTable(m Model) string {
 	return box.Render(tableContent)
 }
 
-// ─── version table ───────────────────────────────────────────────────────────
+// ─── installed versions table ─────────────────────────────────────────────────
+
+const (
+	verColW    = 12
+	phpColW    = 12
+	mysqlColW  = 12
+	pathColW   = 28
+	statusColW = 12
+)
+
+// RenderInstalledVersionsTable renders a table of installed XAMPP versions with
+// PHP/MySQL info and active status indicator.
+func RenderInstalledVersionsTable(m Model) string {
+	col := func(w int) lipgloss.Style {
+		return lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Foreground(colorText)
+	}
+	hl := func(w int) lipgloss.Style {
+		return lipgloss.NewStyle().
+			Width(w).Align(lipgloss.Center).
+			Foreground(colorHighlightFg).Background(colorHighlightBg).Bold(true)
+	}
+	hdr := func(w int, label string) string {
+		return lipgloss.NewStyle().
+			Width(w).Align(lipgloss.Center).
+			Foreground(colorTitle).Bold(true).Underline(true).
+			Render(label)
+	}
+
+	header := lipgloss.JoinHorizontal(lipgloss.Top,
+		hdr(verColW, "Version"),
+		hdr(phpColW, "PHP"),
+		hdr(mysqlColW, "MySQL"),
+		hdr(pathColW, "Path"),
+		hdr(statusColW, "Status"),
+	)
+
+	if len(m.installedVersions) == 0 {
+		empty := lipgloss.NewStyle().Foreground(colorMuted).Padding(1, 0).
+			Render("No XAMPP versions found. Press i to install one.")
+		content := lipgloss.JoinVertical(lipgloss.Left, header, empty)
+		return lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorBorder).
+			Padding(0, 2).
+			Render(content)
+	}
+
+	rows := make([]string, len(m.installedVersions))
+	for i, v := range m.installedVersions {
+		isHL := m.cursorVersionsMgmt == i
+
+		statusStr := "○ Inactive"
+		statusColor := colorMuted
+		if v.IsActive {
+			statusStr = "● Active"
+			statusColor = colorSuccess
+		}
+
+		if isHL {
+			rows[i] = lipgloss.JoinHorizontal(lipgloss.Top,
+				hl(verColW).Render(truncateOrPad(v.Version, verColW)),
+				hl(phpColW).Render(truncateOrPad(v.PHPVersion, phpColW)),
+				hl(mysqlColW).Render(truncateOrPad(v.MySQLVersion, mysqlColW)),
+				hl(pathColW).Render(truncateOrPad(v.Path, pathColW)),
+				hl(statusColW).Render(truncateOrPad(statusStr, statusColW)),
+			)
+		} else {
+			rows[i] = lipgloss.JoinHorizontal(lipgloss.Top,
+				col(verColW).Render(truncateOrPad(v.Version, verColW)),
+				col(phpColW).Render(truncateOrPad(v.PHPVersion, phpColW)),
+				col(mysqlColW).Render(truncateOrPad(v.MySQLVersion, mysqlColW)),
+				col(pathColW).Render(truncateOrPad(v.Path, pathColW)),
+				col(statusColW).Foreground(statusColor).Render(truncateOrPad(statusStr, statusColW)),
+			)
+		}
+	}
+
+	tableContent := lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		lipgloss.JoinVertical(lipgloss.Left, rows...),
+	)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
+		Padding(0, 2).
+		Render(tableContent)
+}
+
+// ─── version table (download picker) ─────────────────────────────────────────
 
 type versionTableData struct {
 	Versions        []string
@@ -268,12 +376,12 @@ func RenderVersionInfoPanel(downloadURL string, selectedButton int) string {
 		Background(colorTitle).
 		Bold(true)
 
-	installBtn := btn.Render("  Install  ")
-	quitBtn := btn.Render("  Quit  ")
+	installBtn := btn.Render("  Download  ")
+	quitBtn := btn.Render("  Cancel  ")
 	if selectedButton == 0 {
-		installBtn = btnActive.Render("  Install  ")
+		installBtn = btnActive.Render("  Download  ")
 	} else {
-		quitBtn = btnActive.Render("  Quit  ")
+		quitBtn = btnActive.Render("  Cancel  ")
 	}
 
 	buttons := lipgloss.PlaceHorizontal(
@@ -287,8 +395,6 @@ func RenderVersionInfoPanel(downloadURL string, selectedButton int) string {
 
 // ─── action dialog ───────────────────────────────────────────────────────────
 
-// RenderActionDialog renders a confirmation dialog with Yes/No buttons.
-// selectedBtn: 0=Yes (active), 1=No (active).
 func RenderActionDialog(title, body string, selectedBtn int) string {
 	panel := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -337,8 +443,6 @@ func RenderActionDialog(title, body string, selectedBtn int) string {
 
 // ─── list ────────────────────────────────────────────────────────────────────
 
-// RenderList renders a vertical menu list. Pass a nil selected map when
-// checkboxes are not needed.
 func RenderList(options []string, cursor int, selected map[int]struct{}) string {
 	activeStyle := lipgloss.NewStyle().Foreground(colorTitle).Bold(true)
 	normalStyle := lipgloss.NewStyle().Foreground(colorText)
@@ -375,9 +479,6 @@ func RenderList(options []string, cursor int, selected map[int]struct{}) string 
 
 // ─── log panel ───────────────────────────────────────────────────────────────
 
-// RenderLogPanel renders the recent-activity log inside a border box.
-// innerWidth is the desired inner content width (matches the service table).
-// visibleLines controls how many log rows are shown (newest at the bottom).
 func RenderLogPanel(logs []string, visibleLines, innerWidth int) string {
 	if visibleLines < 1 {
 		visibleLines = 1
@@ -386,7 +487,6 @@ func RenderLogPanel(logs []string, visibleLines, innerWidth int) string {
 		innerWidth = 10
 	}
 
-	// ── collect the last N entries ──────────────────────────────────────────
 	visible := logs
 	if len(visible) > visibleLines {
 		visible = visible[len(visible)-visibleLines:]
@@ -397,7 +497,6 @@ func RenderLogPanel(logs []string, visibleLines, innerWidth int) string {
 	emptyStyle := lipgloss.NewStyle().Foreground(colorBorder)
 
 	lines := make([]string, visibleLines)
-	// pad empty rows at the top so newest entries sit at the bottom
 	offset := visibleLines - len(visible)
 	for i := 0; i < offset; i++ {
 		lines[i] = emptyStyle.Render("—")
@@ -413,7 +512,6 @@ func RenderLogPanel(logs []string, visibleLines, innerWidth int) string {
 
 	content := strings.Join(lines, "\n")
 
-	// ── header + separator ──────────────────────────────────────────────────
 	headerStyle := lipgloss.NewStyle().Foreground(colorTitle).Bold(true)
 	sepStyle := lipgloss.NewStyle().Foreground(colorBorder)
 
@@ -431,8 +529,6 @@ func RenderLogPanel(logs []string, visibleLines, innerWidth int) string {
 
 // ─── progress bar ────────────────────────────────────────────────────────────
 
-// RenderProgressBar renders a filled progress bar of the given inner width.
-// pct must be in [0.0, 1.0].
 func RenderProgressBar(pct float64, innerWidth int) string {
 	if innerWidth < 4 {
 		innerWidth = 4

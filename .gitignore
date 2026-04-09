@@ -3,3 +3,10 @@ cmd/lampp-tui/downloads/
 
 # Ignorar el archivo de log
 cmd/logs/
+
+# Ignorar archivos y carpetas de Claude
+.claude/
+.claudeignore
+CLAUDE.md
+CLAUDE.local.md
+@.claude/
