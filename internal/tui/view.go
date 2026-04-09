@@ -22,11 +22,11 @@ func (m Model) View() tea.View {
 
 	var content string
 	switch {
-	case m.runningInstaller:
+	case m.runningInstaller && !m.installerBackgrounded:
 		content = installerPane(m, w, mainH)
 	case m.postDownload:
 		content = postDownloadPane(m, w, mainH)
-	case m.downloading:
+	case m.downloading && !m.downloadBackgrounded:
 		content = downloadPane(m, w, mainH)
 	case m.showVersionsPanel:
 		content = versionsMgmtPane(m, w, mainH)
@@ -68,20 +68,37 @@ func contextFooter(m Model, w int) string {
 	navLine := lipgloss.PlaceHorizontal(w, lipgloss.Center,
 		join(hint("↑↓←→/wasd", "Navigate"), hint("Enter/Space", "Action"), hint("q", "Quit")))
 
+	// Background task indicator (right-aligned, above nav hints).
+	var bgLine string
+	if m.downloading && m.downloadBackgrounded {
+		badge := lipgloss.NewStyle().Foreground(colorTitle).
+			Render(fmt.Sprintf("⟳  DL %.0f%%", m.downloadProgress*100))
+		bgLine = lipgloss.PlaceHorizontal(w, lipgloss.Right, badge) + "\n"
+	} else if m.runningInstaller && m.installerBackgrounded {
+		badge := lipgloss.NewStyle().Foreground(colorTitle).Render("⟳  Installing…")
+		bgLine = lipgloss.PlaceHorizontal(w, lipgloss.Right, badge) + "\n"
+	}
+
 	switch {
 	case m.showVersionsPanel:
 		extra := lipgloss.PlaceHorizontal(w, lipgloss.Center,
 			join(hint("Enter", "Switch version"), hint("q/Esc", "Back")))
-		return navLine + "\n" + extra
+		return bgLine + navLine + "\n" + extra
 
-	case !m.ShowNewView && !m.downloading && !m.postDownload && !m.runningInstaller:
+	case !m.ShowNewView && !m.postDownload:
 		extra := lipgloss.PlaceHorizontal(w, lipgloss.Center,
 			join(hint("e", "Start all"), hint("x", "Stop all"), hint("r", "Restart all"),
 				hint("v", "Versions"), hint("i", "Install")))
+		return bgLine + navLine + "\n" + extra
+
+	case m.downloading && !m.downloadBackgrounded,
+		m.runningInstaller && !m.installerBackgrounded:
+		extra := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+			hint("q/Esc", "Send to background"))
 		return navLine + "\n" + extra
 	}
 
-	return navLine
+	return bgLine + navLine
 }
 
 // ─── panes ───────────────────────────────────────────────────────────────────
@@ -125,6 +142,15 @@ func adminPane(m Model, w, h int) string {
 
 	logStr := lipgloss.PlaceHorizontal(w, lipgloss.Center,
 		RenderLogPanel(m.logs, logVisible, logInnerW))
+
+	// ── URL info modal (port → open browser) ─────────────────────────────
+	if m.showURLModal {
+		modalStr := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+			RenderURLModal(m.urlModalSvc, m.urlModalURL))
+		body := lipgloss.JoinVertical(lipgloss.Left, versionBar, tableStr, "", modalStr)
+		below := lipgloss.Place(w, belowH, lipgloss.Center, lipgloss.Top, body)
+		return titleStr + "\n\n" + below
+	}
 
 	// ── dialog overlay replaces log panel when active ──────────────────────
 	if m.showDialog {

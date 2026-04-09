@@ -393,6 +393,33 @@ func RenderVersionInfoPanel(downloadURL string, selectedButton int) string {
 	return panel.Render(info + "\n\n" + buttons)
 }
 
+// ─── URL info modal ───────────────────────────────────────────────────────────
+
+// RenderURLModal renders a minimal overlay showing the service URL after the
+// user presses Enter on the Port column. Press any key to dismiss.
+func RenderURLModal(svc, url string) string {
+	panel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorTitle).
+		Padding(1, 4).
+		Background(colorPanelBg).
+		Foreground(colorPanelFg)
+
+	svcStyle := lipgloss.NewStyle().Foreground(colorTitle).Bold(true)
+	urlStyle := lipgloss.NewStyle().Foreground(colorText).Bold(true)
+	hintStyle := lipgloss.NewStyle().Foreground(colorMuted)
+
+	content := lipgloss.JoinVertical(lipgloss.Center,
+		svcStyle.Render(svc),
+		"",
+		urlStyle.Render(url),
+		"",
+		hintStyle.Render("Opening in browser…   any key to close"),
+	)
+
+	return panel.Render(content)
+}
+
 // ─── action dialog ───────────────────────────────────────────────────────────
 
 func RenderActionDialog(title, body string, selectedBtn int) string {

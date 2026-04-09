@@ -52,9 +52,18 @@ type Model struct {
 	postDownloadBtn int // 0=Install  1=Skip
 
 	// ── XAMPP installer runner ────────────────────────────────────────────────
-	runningInstaller bool
-	installerStatus  string
-	installerError   string
+	runningInstaller    bool
+	installerStatus     string
+	installerError      string
+	installerBackgrounded bool
+
+	// ── Download backgrounding ────────────────────────────────────────────────
+	downloadBackgrounded bool
+
+	// ── URL info modal (shown when opening port in browser) ───────────────────
+	showURLModal bool
+	urlModalSvc  string
+	urlModalURL  string
 
 	// ── Installed versions management panel ───────────────────────────────────
 	showVersionsPanel  bool

@@ -177,18 +177,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	key := msg2.String()
 
-	// While installer is running, only allow quit.
-	if m.runningInstaller {
-		if key == "ctrl+c" {
+	// URL info modal: any key closes it.
+	if m.showURLModal {
+		m.showURLModal = false
+		return m, nil
+	}
+
+	// Installer running (not backgrounded) — q/esc sends to background.
+	if m.runningInstaller && !m.installerBackgrounded {
+		switch key {
+		case "ctrl+c":
 			return m, tea.Quit
+		case "q", "esc":
+			m.installerBackgrounded = true
 		}
 		return m, nil
 	}
 
-	// While downloading, only allow quit.
-	if m.downloading {
-		if key == "ctrl+c" {
+	// Downloading (not backgrounded) — q/esc sends to background.
+	if m.downloading && !m.downloadBackgrounded {
+		switch key {
+		case "ctrl+c":
 			return m, tea.Quit
+		case "q", "esc":
+			m.downloadBackgrounded = true
 		}
 		return m, nil
 	}
@@ -350,10 +362,14 @@ func (m Model) handleMainMenu(key string) (tea.Model, tea.Cmd) {
 				m.dialogRow = m.cursorRow
 			}
 
-		case 2: // Port → open in browser (only when running and port is valid).
+		case 2: // Port → open in browser + show URL modal for reference.
 			port := m.ports[m.cursorRow]
 			if m.isRunning(m.cursorRow) && port != "" && port != "N/A" {
-				return m, openBrowserCmd("http://localhost:" + port)
+				url := "http://localhost:" + port
+				m.showURLModal = true
+				m.urlModalSvc = m.choices[m.cursorRow]
+				m.urlModalURL = url
+				return m, openBrowserCmd(url)
 			}
 
 		case 3: // Config → ask to open in editor.
