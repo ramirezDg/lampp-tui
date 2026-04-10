@@ -293,13 +293,19 @@ func RenderInstalledVersionsTable(m Model) string {
 // ─── version table (download picker) ─────────────────────────────────────────
 
 type versionTableData struct {
-	Versions        []string
-	SelectedVersion int
+	Versions           []string
+	SelectedVersion    int
+	DownloadedVersions []string // versions already downloaded (show ⬇ indicator)
 }
 
 func RenderVersionTable(d versionTableData) string {
 	const numCols = 4
 	const colW = 20
+
+	downloadedSet := make(map[string]bool, len(d.DownloadedVersions))
+	for _, v := range d.DownloadedVersions {
+		downloadedSet[v] = true
+	}
 
 	col := func() lipgloss.Style {
 		return lipgloss.NewStyle().
@@ -313,6 +319,7 @@ func RenderVersionTable(d versionTableData) string {
 		Bold(true).
 		Width(colW).
 		Align(lipgloss.Center)
+	dlStyle := lipgloss.NewStyle().Foreground(colorSuccess)
 
 	n := len(d.Versions)
 	numRows := (n + numCols - 1) / numCols
@@ -326,10 +333,29 @@ func RenderVersionTable(d versionTableData) string {
 				if ver == "" {
 					ver = "-"
 				}
+				label := ver
+				if downloadedSet[ver] {
+					label = ver + " ⬇"
+				}
 				if idx == d.SelectedVersion {
-					cells[i][j] = hl.Render(ver)
+					if downloadedSet[ver] {
+						// Highlight with green tint to show it's ready
+						cells[i][j] = lipgloss.NewStyle().
+							Foreground(colorHighlightFg).
+							Background(colorHighlightBg).
+							Bold(true).
+							Width(colW).
+							Align(lipgloss.Center).
+							Render(label)
+					} else {
+						cells[i][j] = hl.Render(label)
+					}
 				} else {
-					cells[i][j] = col().Render(ver)
+					if downloadedSet[ver] {
+						cells[i][j] = col().Foreground(colorSuccess).Render(truncateOrPad(label, colW))
+					} else {
+						cells[i][j] = col().Render(ver)
+					}
 				}
 			} else {
 				cells[i][j] = col().Render("")
@@ -341,12 +367,14 @@ func RenderVersionTable(d versionTableData) string {
 	for i := range cells {
 		rowStrings[i] = lipgloss.JoinHorizontal(lipgloss.Top, cells[i]...)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, rowStrings...)
+
+	legend := dlStyle.Render("⬇") + lipgloss.NewStyle().Foreground(colorMuted).Render(" = ready to install")
+	return lipgloss.JoinVertical(lipgloss.Left, rowStrings...) + "\n\n" + legend
 }
 
 // ─── version info panel ──────────────────────────────────────────────────────
 
-func RenderVersionInfoPanel(downloadURL string, selectedButton int) string {
+func RenderVersionInfoPanel(downloadURL string, selectedButton int, alreadyDownloaded bool) string {
 	panel := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorTitle).
@@ -357,8 +385,14 @@ func RenderVersionInfoPanel(downloadURL string, selectedButton int) string {
 	label := lipgloss.NewStyle().Foreground(colorPanelFg).Bold(true)
 	value := lipgloss.NewStyle().Foreground(colorTitle)
 
-	info := label.Render("Download URL: ") + value.Render(downloadURL) + "\n" +
-		label.Render("Destination:  ") + value.Render("./downloads/")
+	var info string
+	if alreadyDownloaded {
+		info = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("⬇ Already downloaded — ready to install") + "\n" +
+			label.Render("Destination:  ") + value.Render("./downloads/")
+	} else {
+		info = label.Render("Download URL: ") + value.Render(downloadURL) + "\n" +
+			label.Render("Destination:  ") + value.Render("./downloads/")
+	}
 
 	btn := lipgloss.NewStyle().
 		Padding(0, 2).
@@ -376,18 +410,23 @@ func RenderVersionInfoPanel(downloadURL string, selectedButton int) string {
 		Background(colorTitle).
 		Bold(true)
 
-	installBtn := btn.Render("  Download  ")
-	quitBtn := btn.Render("  Cancel  ")
+	actionLabel := "  Download  "
+	if alreadyDownloaded {
+		actionLabel = "  Install Now  "
+	}
+
+	actionBtn := btn.Render(actionLabel)
+	cancelBtn := btn.Render("  Cancel  ")
 	if selectedButton == 0 {
-		installBtn = btnActive.Render("  Download  ")
+		actionBtn = btnActive.Render(actionLabel)
 	} else {
-		quitBtn = btnActive.Render("  Cancel  ")
+		cancelBtn = btnActive.Render("  Cancel  ")
 	}
 
 	buttons := lipgloss.PlaceHorizontal(
 		lipgloss.Width(info),
 		lipgloss.Center,
-		lipgloss.JoinHorizontal(lipgloss.Top, installBtn, quitBtn),
+		lipgloss.JoinHorizontal(lipgloss.Top, actionBtn, cancelBtn),
 	)
 
 	return panel.Render(info + "\n\n" + buttons)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"xampp-tui/internal/logger"
 )
 
@@ -72,4 +73,34 @@ func Download(version string, onProgress ProgressFunc) error {
 // Install is the fire-and-forget wrapper used outside of the TUI flow.
 func Install(version string) error {
 	return Download(version, nil)
+}
+
+// DownloadedVersions returns the version strings of all XAMPP installers that
+// have been downloaded to the downloads directory and are ready to install.
+// Only files matching the naming pattern produced by Download() are returned.
+func DownloadedVersions() []string {
+	entries, err := os.ReadDir(downloadDir)
+	if err != nil {
+		return nil
+	}
+
+	const prefix = "xampp-linux-x64-"
+	const suffix = "-0-installer.run"
+
+	var versions []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+			continue
+		}
+		ver := strings.TrimPrefix(name, prefix)
+		ver = strings.TrimSuffix(ver, suffix)
+		if ver != "" {
+			versions = append(versions, ver)
+		}
+	}
+	return versions
 }

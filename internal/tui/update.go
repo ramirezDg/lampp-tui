@@ -290,11 +290,28 @@ func (m Model) handleVersionInfoPanel(key string) (tea.Model, tea.Cmd) {
 			m.showVersionInfoPanel = false
 			m.installing = false
 			m.ShowNewView = false
-			m.downloading = true
-			m.downloadProgress = 0
-			m.downloadVersion = ver
-			m.downloadError = ""
-			return m, startDownloadCmd(ver)
+
+			// Check if already downloaded — skip download, go straight to install prompt.
+			alreadyDownloaded := false
+			for _, v := range m.downloadedVersions {
+				if v == ver {
+					alreadyDownloaded = true
+					break
+				}
+			}
+
+			if alreadyDownloaded {
+				m.downloadVersion = ver
+				m.downloadProgress = 1.0
+				m.postDownload = true
+				m.postDownloadBtn = 0
+			} else {
+				m.downloading = true
+				m.downloadProgress = 0
+				m.downloadVersion = ver
+				m.downloadError = ""
+				return m, startDownloadCmd(ver)
+			}
 		}
 		m.showVersionInfoPanel = false
 	}
@@ -302,7 +319,8 @@ func (m Model) handleVersionInfoPanel(key string) (tea.Model, tea.Cmd) {
 }
 
 // handleInstallMenu processes keyboard input on the "XAMPP not installed"
-// welcome screen.
+// welcome screen. Options are built dynamically: downloaded-but-not-installed
+// versions appear first, followed by "Download new version" and "Quit".
 func (m Model) handleInstallMenu(key string) (tea.Model, tea.Cmd) {
 	row, _, quit := navigate(key, m.cursorInstall, 0, len(m.optionsInstallation), 1)
 	m.cursorInstall = row
@@ -312,8 +330,21 @@ func (m Model) handleInstallMenu(key string) (tea.Model, tea.Cmd) {
 	}
 
 	if key == "enter" || key == " " {
-		switch m.cursorInstall {
-		case 0: // Install XAMPP
+		nDownloaded := len(m.downloadedVersions)
+
+		switch {
+		case m.cursorInstall < nDownloaded:
+			// Install an already-downloaded version directly.
+			ver := m.downloadedVersions[m.cursorInstall]
+			m.downloadVersion = ver
+			m.downloadProgress = 1.0
+			m.runningInstaller = true
+			m.installerStatus = "Starting installer…"
+			m.installerError = ""
+			return m, startInstallerCmd(ver)
+
+		case m.cursorInstall == nDownloaded:
+			// "Download new version" — open the version picker.
 			if len(m.xamppVersions) == 0 {
 				versions, err := installer.FetchVersions()
 				if err != nil {
@@ -325,7 +356,9 @@ func (m Model) handleInstallMenu(key string) (tea.Model, tea.Cmd) {
 				m.selectedVersion = 0
 			}
 			m.installing = true
-		case 1: // Quit
+
+		default:
+			// Quit
 			return m, tea.Quit
 		}
 	}

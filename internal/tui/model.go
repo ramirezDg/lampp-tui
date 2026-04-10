@@ -7,6 +7,36 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// ─── install-menu helpers ─────────────────────────────────────────────────────
+
+// readyToInstall returns downloaded .run files that are not yet installed,
+// suitable for immediate installation without re-downloading.
+func readyToInstall(installed []xampp.InstalledVersion) []string {
+	downloaded := installer.DownloadedVersions()
+	installedSet := make(map[string]bool, len(installed))
+	for _, v := range installed {
+		installedSet[v.Version] = true
+	}
+	var ready []string
+	for _, ver := range downloaded {
+		if !installedSet[ver] {
+			ready = append(ready, ver)
+		}
+	}
+	return ready
+}
+
+// buildInstallOptions constructs the option list for the welcome screen.
+// Downloaded-but-not-installed versions appear first as quick-install entries.
+func buildInstallOptions(downloaded []string) []string {
+	opts := make([]string, 0, len(downloaded)+2)
+	for _, ver := range downloaded {
+		opts = append(opts, "Install XAMPP "+ver+"  (ready to install)")
+	}
+	opts = append(opts, "Download new version", "Quit")
+	return opts
+}
+
 // Model is the central BubbleTea state for the application. It is immutable
 // between updates — Update always returns a new copy.
 type Model struct {
@@ -32,6 +62,9 @@ type Model struct {
 	selectedVersion     int
 	optionsInstallation []string
 	cursorInstall       int
+
+	// Downloaded installers that are not yet installed (ready for immediate use).
+	downloadedVersions []string
 
 	// Version selection table cursor
 	cursorVersionRow int
@@ -86,6 +119,7 @@ type Model struct {
 func InitialModel() Model {
 	status, _ := xampp.GetServiceStatus(backgroundCtx())
 	installed := xampp.ScanInstalledVersions()
+	downloaded := readyToInstall(installed)
 
 	return Model{
 		choices:             []string{"Apache", "MySQL", "FTP"},
@@ -93,7 +127,7 @@ func InitialModel() Model {
 		ports:               []string{"", "", ""},
 		config:              []string{"httpd.conf", "my.cnf", "proftpd.conf"},
 		ShowNewView:         !xampp.IsInstalled(),
-		optionsInstallation: []string{"Install XAMPP", "Quit/Exit"},
+		optionsInstallation: buildInstallOptions(downloaded),
 		ApacheStatus:        status.Apache,
 		MySQLStatus:         status.MySQL,
 		FTPStatus:           status.FTP,
@@ -102,8 +136,9 @@ func InitialModel() Model {
 			"/opt/lampp/etc/my.cnf",
 			"/opt/lampp/etc/proftpd.conf",
 		},
-		logs:              xampp.RecentLogs(20),
-		installedVersions: installed,
+		logs:               xampp.RecentLogs(20),
+		installedVersions:  installed,
+		downloadedVersions: downloaded,
 	}
 }
 

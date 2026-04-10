@@ -345,22 +345,32 @@ func versionPickerContent(m Model) string {
 		names = append(names, v.Name)
 	}
 
+	// Build a set of already-downloaded versions for quick lookup.
+	downloadedSet := make(map[string]bool, len(m.downloadedVersions))
+	for _, v := range m.downloadedVersions {
+		downloadedSet[v] = true
+	}
+
 	heading := lipgloss.NewStyle().Foreground(colorMuted).Bold(true).
 		Render("Select a XAMPP version to download:")
 
 	table := RenderVersionTable(versionTableData{
-		Versions:        names,
-		SelectedVersion: selectedIdx,
+		Versions:           names,
+		SelectedVersion:    selectedIdx,
+		DownloadedVersions: m.downloadedVersions,
 	})
 
 	parts := []string{heading, "", table}
 
 	if m.showVersionInfoPanel {
 		url := "(select a valid version)"
+		alreadyDownloaded := false
 		if n > 0 && selectedIdx < n {
+			ver := m.xamppVersions[selectedIdx].Name
 			url = m.xamppVersions[selectedIdx].DownloadURL
+			alreadyDownloaded = downloadedSet[ver]
 		}
-		parts = append(parts, "", RenderVersionInfoPanel(url, m.cursorVersionButton))
+		parts = append(parts, "", RenderVersionInfoPanel(url, m.cursorVersionButton, alreadyDownloaded))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Center, parts...)

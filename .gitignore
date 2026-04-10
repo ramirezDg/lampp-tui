@@ -1,10 +1,16 @@
-# Ignorar todo el contenido de downloads
+# Downloads and logs
 cmd/lampp-tui/downloads/
-
-# Ignorar el archivo de log
+downloads/
 cmd/logs/
+logs/
 
-# Ignorar archivos y carpetas de Claude
+# Build artifacts
+xampp-tui
+*.tar.gz
+*.tar.gz.sha256
+*.sha256
+
+# Claude config (private)
 .claude/
 .claudeignore
 CLAUDE.md
