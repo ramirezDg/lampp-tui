@@ -22,9 +22,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install system dependencies
-        run: sudo apt-get install -y gawk curl iproute2
-
       - name: Vet
         run: go vet ./...
 
@@ -40,18 +37,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # needed for git describe --tags
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Install system dependencies
-        run: sudo apt-get install -y gawk curl iproute2
-
-      - name: Build release binary
+      - name: Build Linux (amd64)
         run: make release
+
+      - name: Build Windows (amd64)
+        run: make release-windows
 
       - name: Generate release notes
         id: notes
@@ -81,14 +78,16 @@ jobs:
 
             ---
 
-            ### Install
+            ### Linux install
 
             ```bash
             curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xampp-tui-linux-amd64.tar.gz | tar xz
             sudo install -m 755 xampp-tui /usr/local/bin/
             ```
 
-            Or clone the repo and run `make install`.
+            ### Windows install
+
+            Download `xampp-tui-windows-amd64.zip`, extract, and run `xampp-tui.exe` from **Windows Terminal**.
 
             ### Verify checksum
 
@@ -98,4 +97,7 @@ jobs:
           files: |
             xampp-tui-linux-amd64.tar.gz
             xampp-tui-linux-amd64.tar.gz.sha256
+            xampp-tui-windows-amd64.zip
+            xampp-tui-windows-amd64.zip.sha256
             xampp-tui
+            xampp-tui.exe

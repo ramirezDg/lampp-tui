@@ -72,8 +72,6 @@
 |---|---|---|
 | **Go 1.21+** | Build from source | [go.dev](https://go.dev/dl/) |
 | **`sudo` access** | Control XAMPP services and manage `/opt/lampp` | — |
-| **`gawk`** | Scrape XAMPP version list from SourceForge | `apt install gawk` |
-| **`curl`** | Fetch version list and check for versions | `apt install curl` |
 | **`xdg-open`** | Open URLs in the system browser | `apt install xdg-utils` |
 | **`ss`** | Detect service ports (`iproute2` package) | `apt install iproute2` |
 | **`nano`** | Edit configuration files | `apt install nano` |
@@ -85,17 +83,17 @@
 
 **Debian / Ubuntu / Pop!_OS**
 ```bash
-sudo apt install gawk curl iproute2 nano xdg-utils
+sudo apt install iproute2 nano xdg-utils
 ```
 
 **Arch / Manjaro**
 ```bash
-sudo pacman -S gawk curl iproute2 nano xdg-utils
+sudo pacman -S iproute2 nano xdg-utils
 ```
 
 **Fedora**
 ```bash
-sudo dnf install gawk curl iproute nano xdg-utils
+sudo dnf install iproute nano xdg-utils
 ```
 
 </details>
