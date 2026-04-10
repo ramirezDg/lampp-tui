@@ -19,6 +19,7 @@
 [![License](https://img.shields.io/badge/license-MIT-22c55e?style=for-the-badge)](LICENSE)
 [![TUI](https://img.shields.io/badge/TUI-Bubble%20Tea-f472b6?style=for-the-badge)](https://github.com/charmbracelet/bubbletea)
 [![Lipgloss](https://img.shields.io/badge/Styled-Lipgloss-a78bfa?style=for-the-badge)](https://github.com/charmbracelet/lipgloss)
+[![Claude Code](https://img.shields.io/badge/AI--assisted-Claude%20Code-orange?style=for-the-badge)](https://claude.ai/code)
 
 <br/>
 
