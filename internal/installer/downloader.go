@@ -8,38 +8,27 @@ import (
 	"path/filepath"
 	"strings"
 	"xampp-tui/internal/logger"
+	"xampp-tui/internal/platform"
 )
-
-// downloadDir returns the absolute path used for storing downloaded XAMPP
-// installers, following the XDG Base Directory convention.
-func downloadDir() string {
-	base := os.Getenv("XDG_DATA_HOME")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return filepath.Join(".", "downloads") // last-resort fallback
-		}
-		base = filepath.Join(home, ".local", "share")
-	}
-	return filepath.Join(base, "xampp-tui", "downloads")
-}
 
 // ProgressFunc is called periodically during a download with the number of
 // bytes received so far and the total file size (-1 if unknown).
 type ProgressFunc func(downloaded, total int64)
 
-// Download downloads the XAMPP installer for the given version into the
-// user's data directory. Partial files are removed on failure.
+// downloadDir returns the absolute path used for storing downloaded installers.
+func downloadDir() string {
+	return filepath.Join(platform.AppDataDir(), "downloads")
+}
+
+// Download downloads the XAMPP installer for the given version. Partial files
+// are removed automatically if the download fails or the file looks invalid.
 func Download(version string, onProgress ProgressFunc) error {
 	dir := downloadDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating download dir: %w", err)
 	}
 
-	url := fmt.Sprintf(
-		"https://sourceforge.net/projects/xampp/files/XAMPP%%20Linux/%s/xampp-linux-x64-%s-0-installer.run/download",
-		version, version,
-	)
+	url := platform.InstallerDownloadURL(version)
 	logger.Write(fmt.Sprintf("downloading XAMPP %s from %s", version, url))
 
 	resp, err := http.Get(url) //nolint:gosec // URL constructed from a known-safe pattern
@@ -48,9 +37,9 @@ func Download(version string, onProgress ProgressFunc) error {
 	}
 	defer resp.Body.Close()
 
-	total := resp.ContentLength // -1 when unknown
+	total := resp.ContentLength
 
-	dest := filepath.Join(dir, fmt.Sprintf("xampp-linux-x64-%s-0-installer.run", version))
+	dest := filepath.Join(dir, platform.InstallerFilename(version))
 	f, err := os.Create(dest)
 	if err != nil {
 		return fmt.Errorf("creating file: %w", err)
@@ -84,7 +73,7 @@ func Download(version string, onProgress ProgressFunc) error {
 	f.Close()
 
 	if writeErr != nil {
-		os.Remove(dest) // clean up partial file
+		os.Remove(dest)
 		return writeErr
 	}
 
@@ -105,11 +94,10 @@ func Install(version string) error {
 
 // DownloadedVersions returns the version strings of all XAMPP installers that
 // have been downloaded and are ready to install. It scans both the current
-// XDG data directory and the legacy ./downloads/ path so that files downloaded
-// with older builds of xampp-tui are still discovered.
+// data directory and legacy locations from older builds.
 func DownloadedVersions() []string {
-	const prefix = "xampp-linux-x64-"
-	const suffix = "-0-installer.run"
+	prefix := platform.InstallerFilePrefix()
+	suffix := platform.InstallerFileSuffix()
 
 	seen := make(map[string]bool)
 	var versions []string
@@ -137,23 +125,19 @@ func DownloadedVersions() []string {
 	return versions
 }
 
-// downloadSearchDirs returns all directories to scan when looking for
-// already-downloaded XAMPP installers.
+// downloadSearchDirs returns all directories to scan for downloaded installers,
+// including legacy paths from older builds.
 func downloadSearchDirs() []string {
 	dirs := []string{downloadDir()}
 
-	// Legacy path: relative to the working directory (used by older builds).
 	if cwd, err := os.Getwd(); err == nil {
-		legacy := filepath.Join(cwd, "downloads")
-		if legacy != downloadDir() {
+		if legacy := filepath.Join(cwd, "downloads"); legacy != downloadDir() {
 			dirs = append(dirs, legacy)
 		}
 	}
 
-	// Legacy path: next to the running binary (how go run places things).
 	if exe, err := os.Executable(); err == nil {
-		legacy := filepath.Join(filepath.Dir(exe), "downloads")
-		if legacy != downloadDir() {
+		if legacy := filepath.Join(filepath.Dir(exe), "downloads"); legacy != downloadDir() {
 			dirs = append(dirs, legacy)
 		}
 	}

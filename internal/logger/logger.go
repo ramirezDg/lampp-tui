@@ -4,27 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"xampp-tui/internal/platform"
 )
 
-// logDir returns the absolute path for the application log directory,
-// following the XDG Base Directory convention (~/.local/share/xampp-tui/logs).
-func logDir() string {
-	base := os.Getenv("XDG_DATA_HOME")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return filepath.Join(".", "logs") // last-resort fallback
-		}
-		base = filepath.Join(home, ".local", "share")
-	}
-	return filepath.Join(base, "xampp-tui", "logs")
-}
-
-// Write appends msg to the application log file, creating the log directory
-// when it does not exist. Errors are printed to stderr rather than panicking
-// so that a logging failure never crashes the application.
+// Write appends msg to the application log file. The log directory is created
+// on first use. Errors are printed to stderr so a logging failure never
+// crashes the application.
 func Write(msg string) {
-	dir := logDir()
+	dir := filepath.Join(platform.AppDataDir(), "logs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "logger: cannot create log dir: %v\n", err)
 		return

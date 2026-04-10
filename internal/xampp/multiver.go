@@ -1,21 +1,12 @@
 package xampp
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
-)
-
-// Multi-version path constants.
-const (
-	// XAMPPBaseDir is the parent directory for versioned XAMPP installations.
-	XAMPPBaseDir = "/opt/xampp"
-
-	// LamppLink is the canonical path (possibly a symlink) to the active XAMPP.
-	LamppLink = "/opt/lampp"
+	"xampp-tui/internal/platform"
 )
 
 // InstalledVersion describes a single XAMPP installation found on the system.
@@ -28,19 +19,18 @@ type InstalledVersion struct {
 }
 
 // ScanInstalledVersions finds all XAMPP versions installed on the system.
-// It scans /opt/xampp/{version}/ directories and falls back to checking
-// /opt/lampp for legacy single-version installations.
+// It scans platform.XAMPPBaseDir()/{version}/ directories and falls back to
+// checking the active XAMPP path for legacy single-version installs.
 func ScanInstalledVersions() []InstalledVersion {
 	activePath := GetActivePath()
 	var versions []InstalledVersion
 
-	// Scan versioned installs under /opt/xampp/
-	if entries, err := os.ReadDir(XAMPPBaseDir); err == nil {
+	if entries, err := os.ReadDir(platform.XAMPPBaseDir()); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() {
 				continue
 			}
-			path := filepath.Join(XAMPPBaseDir, e.Name())
+			path := filepath.Join(platform.XAMPPBaseDir(), e.Name())
 			if !isXAMPPDir(path) {
 				continue
 			}
@@ -48,11 +38,10 @@ func ScanInstalledVersions() []InstalledVersion {
 		}
 	}
 
-	// Legacy fallback: /opt/lampp exists and is not a versioned symlink
-	if _, err := os.Stat(LamppLink); err == nil {
-		real, _ := filepath.EvalSymlinks(LamppLink)
-
-		if !strings.HasPrefix(real, XAMPPBaseDir) {
+	// Legacy fallback: active path exists but is not under XAMPPBaseDir.
+	if _, err := os.Stat(platform.ActiveXAMPPPath()); err == nil {
+		real, _ := filepath.EvalSymlinks(platform.ActiveXAMPPPath())
+		if !strings.HasPrefix(real, platform.XAMPPBaseDir()) {
 			covered := false
 			for _, v := range versions {
 				vReal, _ := filepath.EvalSymlinks(v.Path)
@@ -62,7 +51,7 @@ func ScanInstalledVersions() []InstalledVersion {
 				}
 			}
 			if !covered {
-				versions = append(versions, newInstalledVersion("default", LamppLink, activePath))
+				versions = append(versions, newInstalledVersion("default", platform.ActiveXAMPPPath(), activePath))
 			}
 		}
 	}
@@ -72,44 +61,40 @@ func ScanInstalledVersions() []InstalledVersion {
 
 // GetActivePath returns the resolved filesystem path of the active XAMPP.
 func GetActivePath() string {
-	real, err := filepath.EvalSymlinks(LamppLink)
+	real, err := filepath.EvalSymlinks(platform.ActiveXAMPPPath())
 	if err != nil {
-		if _, err2 := os.Stat(LamppLink); err2 == nil {
-			return LamppLink
+		if _, err2 := os.Stat(platform.ActiveXAMPPPath()); err2 == nil {
+			return platform.ActiveXAMPPPath()
 		}
 		return ""
 	}
 	return real
 }
 
-// SwitchVersion atomically updates /opt/lampp to point to the installation
-// at path. Requires sudo.
-func SwitchVersion(path string) error {
-	out, err := exec.Command("sudo", "ln", "-sfn", path, LamppLink).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("switch version: %s: %w", strings.TrimSpace(string(out)), err)
-	}
-	return nil
+// SwitchVersion updates the active XAMPP path to point to the installation
+// at targetPath.
+func SwitchVersion(targetPath string) error {
+	return platform.SetActiveVersion(targetPath)
 }
 
-// UninstallVersion permanently removes the XAMPP installation at path using
-// sudo. It refuses to remove the active version (pointed to by /opt/lampp).
+// UninstallVersion permanently removes the XAMPP installation at path.
+// It refuses to remove the currently active version.
 func UninstallVersion(path string) error {
-	// Safety: never remove the active installation.
 	activePath := GetActivePath()
 	realPath, _ := filepath.EvalSymlinks(path)
 	realActive, _ := filepath.EvalSymlinks(activePath)
 
 	if path == activePath || (realPath != "" && realActive != "" && realPath == realActive) {
-		return fmt.Errorf("cannot uninstall the active XAMPP version — switch to another version first")
+		return errActiveVersion
 	}
-
-	out, err := exec.Command("sudo", "rm", "-rf", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("uninstall: %s: %w", strings.TrimSpace(string(out)), err)
-	}
-	return nil
+	return platform.RemoveInstallation(path)
 }
+
+var errActiveVersion = errStr("cannot uninstall the active XAMPP version — switch to another version first")
+
+type errStr string
+
+func (e errStr) Error() string { return string(e) }
 
 // GetVersionInfo returns PHP and MySQL version strings for the XAMPP
 // installation rooted at basePath.
@@ -134,7 +119,7 @@ func newInstalledVersion(name, path, activePath string) InstalledVersion {
 
 	isActive := path == activePath ||
 		(real != "" && activeReal != "" && real == activeReal) ||
-		(activePath == "" && path == LamppLink)
+		(activePath == "" && path == platform.ActiveXAMPPPath())
 
 	php, mysql := GetVersionInfo(path)
 	return InstalledVersion{

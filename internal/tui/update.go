@@ -3,11 +3,10 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
-	"syscall"
 	"time"
 	"xampp-tui/internal/installer"
+	"xampp-tui/internal/platform"
 	"xampp-tui/internal/xampp"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,33 +16,19 @@ import (
 
 type editorClosedMsg struct{ err error }
 
-// openBrowserCmd opens url in the system browser, detached from the TUI's
-// terminal session so it doesn't interfere with raw-mode input handling.
+// openBrowserCmd opens url in the system browser using the platform-specific
+// implementation (xdg-open on Linux, cmd /c start on Windows).
 func openBrowserCmd(url string) tea.Cmd {
 	return func() tea.Msg {
-		for _, browser := range []string{"xdg-open", "sensible-browser", "x-www-browser"} {
-			if _, err := exec.LookPath(browser); err != nil {
-				continue
-			}
-			cmd := exec.Command(browser, url)
-			cmd.Stdin = nil
-			cmd.Stdout = nil
-			cmd.Stderr = nil
-			// Setsid creates a new session so the child is fully detached from
-			// the TUI's controlling terminal (raw mode). Without this xdg-open
-			// can silently fail inside Bubble Tea.
-			cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-			if cmd.Start() == nil {
-				return nil
-			}
-		}
+		platform.OpenBrowser(url)
 		return nil
 	}
 }
 
-// openEditorCmd suspends the TUI, opens nano for path, then resumes.
+// openEditorCmd suspends the TUI, opens the platform editor for path, then
+// resumes (nano on Linux, notepad on Windows).
 func openEditorCmd(path string) tea.Cmd {
-	return tea.ExecProcess(exec.Command("nano", path), func(err error) tea.Msg {
+	return tea.ExecProcess(platform.EditorCommand(path), func(err error) tea.Msg {
 		return editorClosedMsg{err: err}
 	})
 }
@@ -160,7 +145,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.installerStatus = "Installation complete!"
 			// Create/update the /opt/lampp symlink to the new installation.
-			targetDir := filepath.Join(installer.XAMPPBaseDir, m.downloadVersion)
+			targetDir := filepath.Join(platform.XAMPPBaseDir(), m.downloadVersion)
 			xampp.SwitchVersion(targetDir) //nolint:errcheck
 			// Refresh everything.
 			m.installedVersions = xampp.ScanInstalledVersions()
@@ -585,7 +570,7 @@ func (m Model) executeDialogAction() (tea.Model, tea.Cmd) {
 	switch m.dialogType {
 	case "kill":
 		pid := fmt.Sprintf("%d", m.pids[m.dialogRow])
-		exec.Command("kill", pid).Run() //nolint:errcheck
+		platform.KillProcess(pid)
 		m = m.refreshSnapshot()
 		m.logs = xampp.RecentLogs(20)
 

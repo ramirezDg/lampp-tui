@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"xampp-tui/internal/platform"
 )
 
 // Version holds the display name and SourceForge directory URL for a single
@@ -17,23 +18,26 @@ type Version struct {
 	DownloadURL string
 }
 
-const sourceForgeListURL = "https://sourceforge.net/projects/xampp/files/XAMPP%20Linux/"
-
 // regexes for extracting fields from a single <tr>…</tr> block.
 var (
 	reVersionName = regexp.MustCompile(`<span class="name">(\d[^<]+)</span>`)
 	reDownloads   = regexp.MustCompile(`<span class="count">([\d,]+)</span>`)
-	reDirLink     = regexp.MustCompile(`href="(/projects/xampp/files/XAMPP%20Linux/[\d][^"]+/)"`)
 )
 
-// FetchVersions fetches the XAMPP Linux file listing from SourceForge and
-// returns all versions that have more than 5 recorded downloads.
+// reDirLink is built at init time using the platform-specific path prefix so
+// that the same binary always fetches from the right SourceForge category.
+var reDirLink = regexp.MustCompile(
+	`href="(/projects/xampp/files/` + platform.VersionDirPrefix() + `/[\d][^"]+/)"`,
+)
+
+// FetchVersions fetches the XAMPP file listing from SourceForge and returns
+// all versions that have more than 5 recorded downloads.
 //
-// Pure Go implementation — no shell, gawk, or curl required.
+// Pure Go — no shell, gawk, or curl dependency.
 func FetchVersions() ([]Version, error) {
 	client := &http.Client{Timeout: 20 * time.Second}
 
-	resp, err := client.Get(sourceForgeListURL)
+	resp, err := client.Get(platform.VersionListURL())
 	if err != nil {
 		return nil, fmt.Errorf("fetching version list: %w", err)
 	}
@@ -43,7 +47,6 @@ func FetchVersions() ([]Version, error) {
 		return nil, fmt.Errorf("sourceforge returned HTTP %d", resp.StatusCode)
 	}
 
-	// Cap at 2 MB — the page is typically ~100–200 KB.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
 	if err != nil {
 		return nil, fmt.Errorf("reading response: %w", err)
@@ -57,18 +60,15 @@ func FetchVersions() ([]Version, error) {
 }
 
 // parseVersionRows splits the HTML body on <tr boundaries and extracts one
-// Version per valid row. Exported for unit testing.
+// Version per valid row.
 func parseVersionRows(body string) []Version {
 	var versions []Version
 
-	// Split on <tr so each chunk represents one table row.
 	for chunk := range strings.SplitSeq(body, "<tr") {
-		// Trim to the end of this row.
 		if end := strings.Index(chunk, "</tr>"); end >= 0 {
 			chunk = chunk[:end]
 		}
 
-		// Extract version name — must begin with a digit.
 		nm := reVersionName.FindStringSubmatch(chunk)
 		if nm == nil {
 			continue
@@ -78,7 +78,6 @@ func parseVersionRows(body string) []Version {
 			continue
 		}
 
-		// Extract download count — filter low-traffic entries.
 		dl := reDownloads.FindStringSubmatch(chunk)
 		if dl == nil {
 			continue
@@ -88,7 +87,6 @@ func parseVersionRows(body string) []Version {
 			continue
 		}
 
-		// Extract the SourceForge directory link.
 		lk := reDirLink.FindStringSubmatch(chunk)
 		if lk == nil {
 			continue
@@ -103,8 +101,6 @@ func parseVersionRows(body string) []Version {
 	return versions
 }
 
-// looksLikeVersion returns true when s starts with a digit and contains at
-// least one dot — e.g. "8.2.12" or "7.4.33".
 func looksLikeVersion(s string) bool {
 	return len(s) > 0 && s[0] >= '0' && s[0] <= '9' && strings.Contains(s, ".")
 }

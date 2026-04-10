@@ -4,13 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
-	"time"
+	"xampp-tui/internal/platform"
 )
-
-const lamppBin = "/opt/lampp/lampp"
 
 // ServiceStatus holds the running/stopped state of each XAMPP service.
 type ServiceStatus struct {
@@ -27,19 +24,16 @@ type ServiceInfo struct {
 	State bool
 }
 
-// Snapshot bundles status + per-service details into a single value so callers
-// can issue one subprocess call instead of two.
+// Snapshot bundles status + per-service details into a single value.
 type Snapshot struct {
 	Status  ServiceStatus
 	Details map[string]ServiceInfo
 }
 
 // GetSnapshot returns the full service picture in one call: running states,
-// PIDs, and ports. Callers that previously called GetServiceStatus and
-// GetServiceDetails separately (causing lampp status to run twice) should use
-// this instead.
+// PIDs, and ports.
 func GetSnapshot(ctx context.Context) (Snapshot, error) {
-	statusText, err := runLamppStatus(ctx)
+	statusText, err := platform.RunServiceCmd(ctx, "status")
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -59,9 +53,8 @@ func GetSnapshot(ctx context.Context) (Snapshot, error) {
 }
 
 // GetServiceStatus returns only the boolean running state of each service.
-// Prefer GetSnapshot when you also need PID/port data.
 func GetServiceStatus(ctx context.Context) (ServiceStatus, error) {
-	text, err := runLamppStatus(ctx)
+	text, err := platform.RunServiceCmd(ctx, "status")
 	if err != nil {
 		return ServiceStatus{}, err
 	}
@@ -74,8 +67,7 @@ func GetServiceStatus(ctx context.Context) (ServiceStatus, error) {
 
 // Control starts or stops a XAMPP service. Accepted service values are
 // "apache", "mysql", "ftp", and "all". Accepted actions are "start", "stop",
-// and "restart". Name normalisation (e.g. "Apache" → "apache") happens here
-// so callers in the UI layer do not need to know lampp's naming conventions.
+// and "restart".
 func Control(service, action string) error {
 	normalized := strings.ToLower(service)
 	var arg string
@@ -88,71 +80,51 @@ func Control(service, action string) error {
 		return fmt.Errorf("unsupported service: %s", service)
 	}
 
-	cmd := exec.Command("sudo", lamppBin, arg)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("lampp %s %s: %w", action, service, err)
-	}
-	return nil
+	_, err := platform.RunServiceCmd(context.Background(), arg)
+	return err
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// internal helpers
-// ────────────────────────────────────────────────────────────────────────────
+// ─── internal helpers ─────────────────────────────────────────────────────────
 
-func runLamppStatus(ctx context.Context) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	out, err := exec.CommandContext(ctx, "sudo", lamppBin, "status").Output()
-	if ctx.Err() == context.DeadlineExceeded {
-		return "", fmt.Errorf("timeout querying XAMPP status")
-	}
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
-}
-
-// buildDetails collects PID and port for each service. It accepts the already-
-// fetched statusText so no second lampp call is needed.
 func buildDetails(ctx context.Context, status ServiceStatus, statusText string) (map[string]ServiceInfo, error) {
-	ssOutput, _ := runSSCommand(ctx)
+	portsOutput := platform.ListeningPorts(ctx)
 
-	// Apache: read master PID from PID file (most reliable) so ss lookup
-	// matches the socket-owning process, not a worker.
-	apacheMaster := readPIDFile("/opt/lampp/logs/httpd.pid")
+	// Apache: read master PID from PID file (most reliable).
+	apacheMaster := readPIDFile(platform.PIDFilePath("apache"))
 	if apacheMaster == "" {
-		apacheMaster = findProcessPID(ctx, "httpd", "apache2")
+		apacheMaster = firstPID(platform.PIDsForProcess(ctx, "httpd", "apache2"))
 	}
-	apacheAll := findAllPIDs(ctx, "httpd", "apache2")
+	apacheAll := platform.PIDsForProcess(ctx, "httpd", "apache2")
 
-	mysqlPID := findProcessPID(ctx, "mysqld")
-	ftpPID := findProcessPID(ctx, "proftpd")
+	mysqlPID := firstPID(platform.PIDsForProcess(ctx, "mysqld"))
+	ftpPID := firstPID(platform.PIDsForProcess(ctx, "proftpd"))
 
 	return map[string]ServiceInfo{
 		"Apache": {
 			Name:  "Apache",
 			PID:   apacheMaster,
-			Port:  findPort(ssOutput, apacheMaster, apacheAll, "httpd", "apache2"),
+			Port:  findPort(portsOutput, apacheMaster, apacheAll, "httpd", "apache2"),
 			State: strings.Contains(statusText, "Apache is running"),
 		},
 		"MySQL": {
 			Name:  "MySQL",
 			PID:   mysqlPID,
-			Port:  findPort(ssOutput, mysqlPID, []string{mysqlPID}, "mysqld"),
+			Port:  findPort(portsOutput, mysqlPID, []string{mysqlPID}, "mysqld"),
 			State: strings.Contains(statusText, "MySQL is running"),
 		},
 		"FTP": {
 			Name:  "FTP",
 			PID:   ftpPID,
-			Port:  findPort(ssOutput, ftpPID, []string{ftpPID}, "proftpd"),
+			Port:  findPort(portsOutput, ftpPID, []string{ftpPID}, "proftpd"),
 			State: strings.Contains(statusText, "ProFTPD is running"),
 		},
 	}, nil
 }
 
-// readPIDFile reads a PID from a file, returning an empty string on error.
 func readPIDFile(path string) string {
+	if path == "" {
+		return ""
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
@@ -160,52 +132,20 @@ func readPIDFile(path string) string {
 	return strings.TrimSpace(string(data))
 }
 
-// findProcessPID returns a single PID for display purposes (first match).
-func findProcessPID(ctx context.Context, names ...string) string {
-	pids := findAllPIDs(ctx, names...)
-	if len(pids) == 0 {
-		return ""
+func firstPID(pids []string) string {
+	if len(pids) > 0 {
+		return pids[0]
 	}
-	return pids[0]
-}
-
-// findAllPIDs returns every running PID for any of the given process names.
-func findAllPIDs(ctx context.Context, names ...string) []string {
-	for _, name := range names {
-		// pidof without -s returns all PIDs separated by spaces.
-		out, err := exec.CommandContext(ctx, "pidof", name).Output()
-		if err == nil {
-			if pids := strings.Fields(strings.TrimSpace(string(out))); len(pids) > 0 {
-				return pids
-			}
-		}
-	}
-	return nil
-}
-
-// runSSCommand executes ss -lptn and returns its raw output. Errors are
-// silently swallowed so that a missing ss(8) binary degrades gracefully
-// (ports simply show as empty).
-func runSSCommand(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "ss", "-lptn").Output()
-	return string(out), err
+	return ""
 }
 
 var portRe = regexp.MustCompile(`:(\d+)`)
 
-// findPort looks up the listening port for a service in ss output.
-//
-// Search order:
-//  1. Lines containing masterPID (socket-owning process, e.g. Apache master).
-//  2. Lines containing any PID in allPIDs (catches single-process daemons).
-//  3. Lines containing any process name (last-resort name-only fallback).
-//
-// Returns "N/A" when no port can be determined.
-func findPort(ssOutput, masterPID string, allPIDs []string, names ...string) string {
-	if ssOutput == "" {
+func findPort(portsOutput, masterPID string, allPIDs []string, names ...string) string {
+	if portsOutput == "" {
 		return "N/A"
 	}
-	lines := strings.Split(ssOutput, "\n")
+	lines := strings.Split(portsOutput, "\n")
 
 	extractPort := func(line string) string {
 		if m := portRe.FindStringSubmatch(line); len(m) == 2 {
@@ -214,7 +154,6 @@ func findPort(ssOutput, masterPID string, allPIDs []string, names ...string) str
 		return ""
 	}
 
-	// 1. Master PID (most precise).
 	if masterPID != "" {
 		for _, line := range lines {
 			if strings.Contains(line, masterPID) {
@@ -225,10 +164,9 @@ func findPort(ssOutput, masterPID string, allPIDs []string, names ...string) str
 		}
 	}
 
-	// 2. Any known PID for this service.
 	for _, pid := range allPIDs {
 		if pid == masterPID {
-			continue // already tried
+			continue
 		}
 		for _, line := range lines {
 			if strings.Contains(line, "pid="+pid) || strings.Contains(line, ","+pid+",") {
@@ -239,7 +177,6 @@ func findPort(ssOutput, masterPID string, allPIDs []string, names ...string) str
 		}
 	}
 
-	// 3. Process name only.
 	for _, line := range lines {
 		for _, name := range names {
 			if strings.Contains(line, name) {
