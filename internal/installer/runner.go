@@ -17,8 +17,9 @@ type InstallProgressFunc func(msg string)
 
 // RunInstaller executes the previously-downloaded .run file for the given
 // version, installing XAMPP to /opt/xampp/{version}/ in unattended mode.
+// If the installer fails, any partially-created target directory is removed.
 func RunInstaller(version string, onProgress InstallProgressFunc) error {
-	runFile := filepath.Join(downloadDir,
+	runFile := filepath.Join(downloadDir(),
 		fmt.Sprintf("xampp-linux-x64-%s-0-installer.run", version))
 
 	if _, err := os.Stat(runFile); err != nil {
@@ -44,6 +45,9 @@ func RunInstaller(version string, onProgress InstallProgressFunc) error {
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		logger.Write("installer error: " + msg)
+		// Clean up any partial installation so the directory doesn't appear
+		// as a valid (but broken) XAMPP version in subsequent scans.
+		exec.Command("sudo", "rm", "-rf", targetDir).Run() //nolint:errcheck
 		return fmt.Errorf("installer failed: %w", err)
 	}
 

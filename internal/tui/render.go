@@ -432,6 +432,23 @@ func RenderVersionInfoPanel(downloadURL string, selectedButton int, alreadyDownl
 	return panel.Render(info + "\n\n" + buttons)
 }
 
+// ─── PATH notice banner ───────────────────────────────────────────────────────
+
+// renderPathNotice renders a dismissible banner shown after /opt/lampp/bin is
+// automatically added to the user's shell config during installation.
+func renderPathNotice(notice string, _ int) string {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorSuccess).
+		Padding(0, 3).
+		Foreground(colorSuccess).
+		Bold(true).
+		Render("PATH updated\n\n" +
+			lipgloss.NewStyle().Foreground(colorText).Bold(false).Render(notice) +
+			"\n\n" +
+			lipgloss.NewStyle().Foreground(colorMuted).Render("Press any key to dismiss"))
+}
+
 // ─── URL info modal ───────────────────────────────────────────────────────────
 
 // RenderURLModal renders a minimal overlay showing the service URL after the

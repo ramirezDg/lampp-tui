@@ -20,7 +20,7 @@ func FetchVersions() ([]Version, error) {
 	// The awk script extracts version name, download count, and directory link
 	// from each <tr> on the SourceForge file listing page.
 	bashScript := `
-		curl -s https://sourceforge.net/projects/xampp/files/XAMPP%20Linux/ | \
+		curl -s --max-time 20 https://sourceforge.net/projects/xampp/files/XAMPP%20Linux/ | \
 		gawk '
 			BEGIN { ver=""; count=""; link=""; }
 			/<tr title=/ { ver=""; count=""; link=""; }

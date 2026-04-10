@@ -82,7 +82,7 @@ func contextFooter(m Model, w int) string {
 	switch {
 	case m.showVersionsPanel:
 		extra := lipgloss.PlaceHorizontal(w, lipgloss.Center,
-			join(hint("Enter", "Switch version"), hint("q/Esc", "Back")))
+			join(hint("Enter", "Switch version"), hint("d", "Uninstall"), hint("q/Esc", "Back")))
 		return bgLine + navLine + "\n" + extra
 
 	case !m.ShowNewView && !m.postDownload:
@@ -142,6 +142,15 @@ func adminPane(m Model, w, h int) string {
 
 	logStr := lipgloss.PlaceHorizontal(w, lipgloss.Center,
 		RenderLogPanel(m.logs, logVisible, logInnerW))
+
+	// ── PATH notice banner (shown after a successful install) ────────────────
+	if m.pathNotice != "" && !m.pathNoticeDone {
+		noticeStr := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+			renderPathNotice(m.pathNotice, w))
+		body := lipgloss.JoinVertical(lipgloss.Left, versionBar, tableStr, "", noticeStr)
+		below := lipgloss.Place(w, belowH, lipgloss.Center, lipgloss.Top, body)
+		return titleStr + "\n\n" + below
+	}
 
 	// ── URL info modal (port → open browser) ─────────────────────────────
 	if m.showURLModal {
@@ -414,6 +423,16 @@ func dialogTitleBody(m Model) (title, body string) {
 						"Stop running services before switching,\n"+
 						"then restart them with the new version.\n\n"+
 						"Path: %s", ver.Path)
+		}
+
+	case "uninstall":
+		if m.dialogRow < len(m.installedVersions) {
+			ver := m.installedVersions[m.dialogRow]
+			return fmt.Sprintf("Uninstall XAMPP %s?", ver.Version),
+				fmt.Sprintf(
+					"This will permanently delete:\n"+
+						"%s\n\n"+
+						"This action cannot be undone.", ver.Path)
 		}
 	}
 	return "Confirm?", ""

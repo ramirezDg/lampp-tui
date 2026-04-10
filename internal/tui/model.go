@@ -114,6 +114,12 @@ type Model struct {
 
 	// ── Recent activity log (from XAMPP log file) ─────────────────────────────
 	logs []string
+
+	// ── Post-install PATH notice ───────────────────────────────────────────────
+	// Set after a successful installation when /opt/lampp/bin is added to the
+	// user's shell config. Shown as a dismissible banner in the admin panel.
+	pathNotice     string // non-empty → show the banner
+	pathNoticeDone bool   // user pressed any key → dismiss
 }
 
 func InitialModel() Model {

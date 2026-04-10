@@ -92,6 +92,25 @@ func SwitchVersion(path string) error {
 	return nil
 }
 
+// UninstallVersion permanently removes the XAMPP installation at path using
+// sudo. It refuses to remove the active version (pointed to by /opt/lampp).
+func UninstallVersion(path string) error {
+	// Safety: never remove the active installation.
+	activePath := GetActivePath()
+	realPath, _ := filepath.EvalSymlinks(path)
+	realActive, _ := filepath.EvalSymlinks(activePath)
+
+	if path == activePath || (realPath != "" && realActive != "" && realPath == realActive) {
+		return fmt.Errorf("cannot uninstall the active XAMPP version — switch to another version first")
+	}
+
+	out, err := exec.Command("sudo", "rm", "-rf", path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("uninstall: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
 // GetVersionInfo returns PHP and MySQL version strings for the XAMPP
 // installation rooted at basePath.
 func GetVersionInfo(basePath string) (phpVer, mysqlVer string) {

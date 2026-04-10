@@ -6,14 +6,18 @@ import (
 	"path/filepath"
 )
 
-// logDir is resolved once relative to the running binary so the path is
-// stable regardless of the working directory the user launches the TUI from.
+// logDir returns the absolute path for the application log directory,
+// following the XDG Base Directory convention (~/.local/share/xampp-tui/logs).
 func logDir() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return "logs"
+	base := os.Getenv("XDG_DATA_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return filepath.Join(".", "logs") // last-resort fallback
+		}
+		base = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(filepath.Dir(exe), "logs")
+	return filepath.Join(base, "xampp-tui", "logs")
 }
 
 // Write appends msg to the application log file, creating the log directory
@@ -32,5 +36,5 @@ func Write(msg string) {
 		return
 	}
 	defer f.Close()
-	f.WriteString(msg + "\n")
+	f.WriteString(msg + "\n") //nolint:errcheck
 }

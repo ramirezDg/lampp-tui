@@ -164,9 +164,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			xampp.SwitchVersion(targetDir) //nolint:errcheck
 			// Refresh everything.
 			m.installedVersions = xampp.ScanInstalledVersions()
+			// Remove the just-installed version from the "ready to install" list.
+			m.downloadedVersions = readyToInstall(m.installedVersions)
+			m.optionsInstallation = buildInstallOptions(m.downloadedVersions)
 			m = m.refreshSnapshot()
 			m.logs = xampp.RecentLogs(20)
 			m.ShowNewView = !xampp.IsInstalled()
+
+			// Automatically add /opt/lampp/bin to the user's shell config so
+			// that php/mysql always point to the active XAMPP version.
+			cfgPath := xampp.DetectShellConfig()
+			if cfgPath != "" {
+				if added, err := xampp.EnsureLamppInPATH(cfgPath); added {
+					m.pathNotice = fmt.Sprintf(
+						"/opt/lampp/bin added to PATH in %s\n"+
+							"Run: source %s   (or open a new terminal)", cfgPath, cfgPath)
+				} else if err != nil {
+					m.pathNotice = fmt.Sprintf(
+						"Could not update %s: %s\n"+
+							"Add manually: export PATH=\"/opt/lampp/bin:$PATH\"", cfgPath, err)
+				} else {
+					// Already present — no notice needed.
+					m.pathNotice = ""
+				}
+			}
 		}
 		return m, nil
 	}
@@ -180,6 +201,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// URL info modal: any key closes it.
 	if m.showURLModal {
 		m.showURLModal = false
+		return m, nil
+	}
+
+	// PATH notice banner: any key dismisses it.
+	if m.pathNotice != "" && !m.pathNoticeDone {
+		m.pathNoticeDone = true
 		return m, nil
 	}
 
@@ -345,6 +372,9 @@ func (m Model) handleInstallMenu(key string) (tea.Model, tea.Cmd) {
 
 		case m.cursorInstall == nDownloaded:
 			// "Download new version" — open the version picker.
+			// Refresh downloads in case files were added externally.
+			m.downloadedVersions = readyToInstall(m.installedVersions)
+			m.optionsInstallation = buildInstallOptions(m.downloadedVersions)
 			if len(m.xamppVersions) == 0 {
 				versions, err := installer.FetchVersions()
 				if err != nil {
@@ -434,6 +464,9 @@ func (m Model) handleMainMenu(key string) (tea.Model, tea.Cmd) {
 		m.cursorVersionsMgmt = 0
 	case "i", "I":
 		// Open version picker to download/install a new XAMPP version.
+		// Refresh downloadedVersions so any files added since startup appear.
+		m.downloadedVersions = readyToInstall(m.installedVersions)
+		m.optionsInstallation = buildInstallOptions(m.downloadedVersions)
 		if len(m.xamppVersions) == 0 {
 			versions, err := installer.FetchVersions()
 			if err != nil {
@@ -473,6 +506,16 @@ func (m Model) handleVersionsMgmt(key string) (tea.Model, tea.Cmd) {
 				m.showDialog = true
 				m.dialogType = "switch_version"
 				m.dialogBtn = 0
+				m.dialogRow = m.cursorVersionsMgmt
+			}
+		}
+	case "d", "D":
+		if n > 0 && m.cursorVersionsMgmt < n {
+			ver := m.installedVersions[m.cursorVersionsMgmt]
+			if !ver.IsActive {
+				m.showDialog = true
+				m.dialogType = "uninstall"
+				m.dialogBtn = 1 // default No — destructive action
 				m.dialogRow = m.cursorVersionsMgmt
 			}
 		}
@@ -558,8 +601,29 @@ func (m Model) executeDialogAction() (tea.Model, tea.Cmd) {
 				m.logs = xampp.RecentLogs(20)
 			}
 		}
+
+	case "uninstall":
+		if m.dialogRow < len(m.installedVersions) {
+			ver := m.installedVersions[m.dialogRow]
+			if err := xampp.UninstallVersion(ver.Path); err == nil {
+				m.installedVersions = xampp.ScanInstalledVersions()
+				m.downloadedVersions = readyToInstall(m.installedVersions)
+				m.optionsInstallation = buildInstallOptions(m.downloadedVersions)
+				// Adjust cursor if it's now out of bounds.
+				if m.cursorVersionsMgmt >= len(m.installedVersions) {
+					m.cursorVersionsMgmt = max(0, len(m.installedVersions)-1)
+				}
+			}
+		}
 	}
 	return m, nil
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
