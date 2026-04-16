@@ -156,18 +156,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logs = xampp.RecentLogs(20)
 			m.ShowNewView = !xampp.IsInstalled()
 
-			// Automatically add /opt/lampp/bin to the user's shell config so
+			// Automatically add the XAMPP bin dir to the user's shell config so
 			// that php/mysql always point to the active XAMPP version.
+			binDir := platform.LamppBinDir()
 			cfgPath := xampp.DetectShellConfig()
 			if cfgPath != "" {
 				if added, err := xampp.EnsureLamppInPATH(cfgPath); added {
 					m.pathNotice = fmt.Sprintf(
-						"/opt/lampp/bin added to PATH in %s\n"+
-							"Run: source %s   (or open a new terminal)", cfgPath, cfgPath)
+						"%s added to PATH in %s\n"+
+							"Run: source %s   (or open a new terminal)", binDir, cfgPath, cfgPath)
 				} else if err != nil {
 					m.pathNotice = fmt.Sprintf(
 						"Could not update %s: %s\n"+
-							"Add manually: export PATH=\"/opt/lampp/bin:$PATH\"", cfgPath, err)
+							"Add manually: export PATH=\"%s:$PATH\"", cfgPath, err, binDir)
 				} else {
 					// Already present — no notice needed.
 					m.pathNotice = ""

@@ -105,7 +105,17 @@ func GetVersionInfo(basePath string) (phpVer, mysqlVer string) {
 // ─── internal helpers ─────────────────────────────────────────────────────────
 
 func isXAMPPDir(path string) bool {
-	for _, sub := range []string{"apache2", filepath.Join("bin", "php"), filepath.Join("bin", "mysql")} {
+	// Apache directory is "apache2" on Linux, "apache" on Windows.
+	// PHP/MySQL binary layout also differs per platform.
+	candidates := []string{
+		"apache2",
+		"apache",
+		filepath.Join("bin", "php"),
+		filepath.Join("php", "php.exe"),
+		filepath.Join("bin", "mysql"),
+		filepath.Join("mysql", "bin", "mysql.exe"),
+	}
+	for _, sub := range candidates {
 		if _, err := os.Stat(filepath.Join(path, sub)); err == nil {
 			return true
 		}
@@ -132,7 +142,7 @@ func newInstalledVersion(name, path, activePath string) InstalledVersion {
 }
 
 func phpVersion(basePath string) string {
-	bin := filepath.Join(basePath, "bin", "php")
+	bin := platform.PHPBin(basePath)
 	out, err := exec.Command(bin, "-r",
 		"echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION.'.'.PHP_RELEASE_VERSION;",
 	).Output()
@@ -145,7 +155,7 @@ func phpVersion(basePath string) string {
 var mysqlVerRe = regexp.MustCompile(`Distrib\s+([\d.]+)`)
 
 func mysqlVersion(basePath string) string {
-	bin := filepath.Join(basePath, "bin", "mysql")
+	bin := platform.MySQLBin(basePath)
 	out, err := exec.Command(bin, "--version").Output()
 	if err != nil {
 		return "—"

@@ -4,11 +4,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
-)
-
-const (
-	apacheErrorLog = "/opt/lampp/logs/error_log"
-	phpErrorLog    = "/opt/lampp/logs/php_error_log"
+	"xampp-tui/internal/platform"
 )
 
 // apacheLineRe matches Apache error log lines:
@@ -22,7 +18,7 @@ var apacheLineRe = regexp.MustCompile(
 // log. Each returned string has the form "HH:MM:SS  [level]  message".
 // Returns nil if the log file cannot be read.
 func RecentLogs(n int) []string {
-	raw := tailFile(apacheErrorLog, n)
+	raw := tailFile(platform.ApacheLogPath(), n)
 	if len(raw) == 0 {
 		return nil
 	}

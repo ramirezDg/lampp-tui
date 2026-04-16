@@ -3,7 +3,9 @@ package tui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"xampp-tui/internal/platform"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
@@ -192,7 +194,7 @@ func versionsMgmtPane(m Model, w, h int) string {
 		Render("Installed XAMPP Versions")
 
 	pathNote := lipgloss.NewStyle().Foreground(colorBorder).Italic(true).
-		Render("Switching updates /opt/lampp symlink only — no shell or PATH config is modified.")
+		Render("Switching updates active version only — no shell or PATH config is modified.")
 
 	table := RenderInstalledVersionsTable(m)
 
@@ -279,7 +281,7 @@ func postDownloadPane(m Model, w, h int) string {
 		Render("Would you like to install it now?")
 
 	destination := lipgloss.NewStyle().Foreground(colorMuted).
-		Render(fmt.Sprintf("Target: /opt/xampp/%s/", m.downloadVersion))
+		Render(fmt.Sprintf("Target: %s", filepath.Join(platform.XAMPPBaseDir(), m.downloadVersion)))
 
 	btn := lipgloss.NewStyle().
 		Padding(0, 2).Margin(0, 1).
@@ -418,11 +420,10 @@ func dialogTitleBody(m Model) (title, body string) {
 			ver := m.installedVersions[m.dialogRow]
 			return fmt.Sprintf("Switch to XAMPP %s?", ver.Version),
 				fmt.Sprintf(
-					"Only /opt/lampp symlink is updated.\n"+
-						"No PATH or shell config is modified.\n\n"+
+					"%s\n\n"+
 						"Stop running services before switching,\n"+
 						"then restart them with the new version.\n\n"+
-						"Path: %s", ver.Path)
+						"Path: %s", platform.SwitchVersionNote(), ver.Path)
 		}
 
 	case "uninstall":

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"xampp-tui/internal/installer"
+	"xampp-tui/internal/platform"
 	"xampp-tui/internal/xampp"
 
 	tea "charm.land/bubbletea/v2"
@@ -137,11 +138,7 @@ func InitialModel() Model {
 		ApacheStatus:        status.Apache,
 		MySQLStatus:         status.MySQL,
 		FTPStatus:           status.FTP,
-		configPaths: []string{
-			"/opt/lampp/etc/httpd.conf",
-			"/opt/lampp/etc/my.cnf",
-			"/opt/lampp/etc/proftpd.conf",
-		},
+		configPaths: platform.ConfigPaths(),
 		logs:               xampp.RecentLogs(20),
 		installedVersions:  installed,
 		downloadedVersions: downloaded,
