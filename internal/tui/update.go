@@ -122,12 +122,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nextDownloadMsgCmd()
 
 	case downloadDoneMsg:
-		m.downloading = false
-		m.downloadProgress = 1.0
 		if msg.err != nil {
+			// Keep m.downloading = true so downloadPane stays visible with the
+			// error. The key handler dismisses it when the user presses q/esc.
 			m.downloadError = msg.err.Error()
 		} else {
-			// Offer to install the downloaded version.
+			m.downloading = false
+			m.downloadProgress = 1.0
 			m.postDownload = true
 			m.postDownloadBtn = 0
 		}
@@ -207,13 +208,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Downloading (not backgrounded) — q/esc sends to background.
+	// Downloading (not backgrounded) — q/esc sends to background (or dismisses error).
 	if m.downloading && !m.downloadBackgrounded {
 		switch key {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "q", "esc":
-			m.downloadBackgrounded = true
+			if m.downloadError != "" {
+				// Error is visible — dismiss and return to the correct panel.
+				m.downloading = false
+				m.downloadError = ""
+				m.ShowNewView = !xampp.IsInstalled()
+			} else {
+				m.downloadBackgrounded = true
+			}
 		}
 		return m, nil
 	}

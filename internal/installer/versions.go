@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 type Version struct {
 	Name        string
 	DownloadURL string
+	Downloads   int
 }
 
 // regexes for extracting fields from a single <tr>…</tr> block.
@@ -30,8 +32,13 @@ var reDirLink = regexp.MustCompile(
 	`href="(/projects/xampp/files/` + platform.VersionDirPrefix() + `/[\d][^"]+/)"`,
 )
 
+// topVersionsLimit is the maximum number of versions shown in the picker.
+// Only the most-downloaded releases are kept so the list stays manageable.
+const topVersionsLimit = 12
+
 // FetchVersions fetches the XAMPP file listing from SourceForge and returns
-// all versions that have more than 5 recorded downloads.
+// the top-downloaded versions (up to topVersionsLimit), sorted by download
+// count descending.
 //
 // Pure Go — no shell, gawk, or curl dependency.
 func FetchVersions() ([]Version, error) {
@@ -55,6 +62,13 @@ func FetchVersions() ([]Version, error) {
 	versions := parseVersionRows(string(body))
 	if len(versions) == 0 {
 		return nil, fmt.Errorf("no XAMPP versions found — SourceForge page format may have changed")
+	}
+
+	sort.Slice(versions, func(i, j int) bool {
+		return versions[i].Downloads > versions[j].Downloads
+	})
+	if len(versions) > topVersionsLimit {
+		versions = versions[:topVersionsLimit]
 	}
 	return versions, nil
 }
@@ -95,6 +109,7 @@ func parseVersionRows(body string) []Version {
 		versions = append(versions, Version{
 			Name:        name,
 			DownloadURL: "https://sourceforge.net" + lk[1],
+			Downloads:   count,
 		})
 	}
 

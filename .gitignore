@@ -10,6 +10,9 @@ xampp-tui
 *.tar.gz.sha256
 *.sha256
 
+# Agent tooling (generated, not source)
+.atl/
+
 # Claude config (private)
 .claude/
 .claudeignore

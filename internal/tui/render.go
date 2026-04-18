@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"xampp-tui/internal/xampp"
 
@@ -9,18 +10,30 @@ import (
 )
 
 // ─── title & footer ──────────────────────────────────────────────────────────
+func getOSName() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "Windows"
+	case "linux":
+		return "Linux"
+	case "darwin":
+		return "macOS"
+	default:
+		return runtime.GOOS
+	}
+}
 
 var BannerTitleL = lipgloss.NewStyle().
 	Foreground(colorTitle).
 	Bold(true).
-	Render(`
+	Render(fmt.Sprintf(`
 ██╗      █████╗ ███╗   ███╗██████╗ ██████╗
 ██║     ██╔══██╗████╗ ████║██╔══██╗██╔══██╗
 ██║     ███████║██╔████╔██║██████╔╝██████╔╝
 ██║     ██╔══██║██║╚██╔╝██║██╔═══╝ ██╔═══╝
 ███████╗██║  ██║██║ ╚═╝ ██║██║     ██║
-╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝     Linux
-`)
+╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝     %s
+`, getOSName()))
 
 func title() string {
 	return lipgloss.NewStyle().

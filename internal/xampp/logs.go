@@ -68,7 +68,9 @@ func tailFile(path string, n int) []string {
 		return nil
 	}
 
-	lines := strings.Split(strings.TrimRight(string(buf), "\n"), "\n")
+	// Normalize Windows CRLF so the regex and display work on all platforms.
+	normalized := strings.ReplaceAll(string(buf), "\r\n", "\n")
+	lines := strings.Split(strings.TrimRight(normalized, "\n"), "\n")
 
 	// The first line may be a partial read — drop it unless we read from BOF.
 	if offset > 0 && len(lines) > 1 {
