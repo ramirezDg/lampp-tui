@@ -32,6 +32,51 @@ var reDirLink = regexp.MustCompile(
 	`href="(/projects/xampp/files/` + platform.VersionDirPrefix() + `/[\d][^"]+/)"`,
 )
 
+// reExeDownload matches the SourceForge file-listing link for any installer
+// executable inside a version directory (handles naming variants like vs16).
+var reExeDownload = regexp.MustCompile(
+	`href="(/projects/xampp/files/` + platform.VersionDirPrefix() + `/[^"]+installer\.exe/download)"`,
+)
+
+// sfClient is a shared HTTP client with a browser-like User-Agent so that
+// SourceForge serves proper redirects instead of its bot-detection page.
+var sfClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
+
+func sfGet(url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "+
+			"(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+	return sfClient.Do(req)
+}
+
+// ResolveInstallerURL fetches a SourceForge version directory page and returns
+// the full download URL of the installer executable found there.
+// This handles naming variants (e.g. -vs16-) that differ across XAMPP releases.
+func ResolveInstallerURL(dirURL string) (string, error) {
+	resp, err := sfGet(dirURL)
+	if err != nil {
+		return "", fmt.Errorf("fetching version directory: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+	if err != nil {
+		return "", fmt.Errorf("reading directory page: %w", err)
+	}
+
+	m := reExeDownload.FindSubmatch(body)
+	if m == nil {
+		return "", fmt.Errorf("installer .exe not found in directory listing — SourceForge page format may have changed")
+	}
+	return "https://sourceforge.net" + string(m[1]), nil
+}
+
 // topVersionsLimit is the maximum number of versions shown in the picker.
 // Only the most-downloaded releases are kept so the list stays manageable.
 const topVersionsLimit = 12
@@ -42,9 +87,7 @@ const topVersionsLimit = 12
 //
 // Pure Go — no shell, gawk, or curl dependency.
 func FetchVersions() ([]Version, error) {
-	client := &http.Client{Timeout: 20 * time.Second}
-
-	resp, err := client.Get(platform.VersionListURL())
+	resp, err := sfGet(platform.VersionListURL())
 	if err != nil {
 		return nil, fmt.Errorf("fetching version list: %w", err)
 	}

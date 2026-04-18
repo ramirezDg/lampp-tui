@@ -3,7 +3,6 @@ package installer
 import (
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,18 +19,35 @@ func downloadDir() string {
 	return filepath.Join(platform.AppDataDir(), "downloads")
 }
 
-// Download downloads the XAMPP installer for the given version. Partial files
-// are removed automatically if the download fails or the file looks invalid.
-func Download(version string, onProgress ProgressFunc) error {
+// Download downloads the XAMPP installer for the given version.
+// dirURL is the SourceForge directory URL for the version (from FetchVersions);
+// when non-empty it is used to resolve the exact installer URL regardless of
+// the filename variant (e.g. -vs16-). Falls back to the platform-constructed
+// URL when dirURL is empty.
+// Partial files are removed automatically if the download fails or the file
+// looks invalid. The saved file always uses InstallerFilename(version) so that
+// DownloadedVersions() can find it consistently.
+func Download(version string, dirURL string, onProgress ProgressFunc) error {
 	dir := downloadDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating download dir: %w", err)
 	}
 
-	url := platform.InstallerDownloadURL(version)
+	var url string
+	if dirURL != "" {
+		resolved, err := ResolveInstallerURL(dirURL)
+		if err != nil {
+			logger.Write(fmt.Sprintf("resolve failed (%v), falling back to platform URL", err))
+			url = platform.InstallerDownloadURL(version)
+		} else {
+			url = resolved
+		}
+	} else {
+		url = platform.InstallerDownloadURL(version)
+	}
 	logger.Write(fmt.Sprintf("downloading XAMPP %s from %s", version, url))
 
-	resp, err := http.Get(url) //nolint:gosec // URL constructed from a known-safe pattern
+	resp, err := sfGet(url)
 	if err != nil {
 		return fmt.Errorf("http get: %w", err)
 	}
@@ -89,7 +105,7 @@ func Download(version string, onProgress ProgressFunc) error {
 
 // Install is the fire-and-forget wrapper used outside of the TUI flow.
 func Install(version string) error {
-	return Download(version, nil)
+	return Download(version, "", nil)
 }
 
 // DownloadedVersions returns the version strings of all XAMPP installers that

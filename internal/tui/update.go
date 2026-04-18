@@ -43,11 +43,13 @@ var dlCh chan tea.Msg
 
 // startDownloadCmd kicks off the download goroutine and returns a cmd that
 // blocks until the first message arrives from it.
-func startDownloadCmd(version string) tea.Cmd {
+// dirURL is the SourceForge directory URL for the version; when non-empty it
+// is used to resolve the exact installer filename from the directory listing.
+func startDownloadCmd(version, dirURL string) tea.Cmd {
 	dlCh = make(chan tea.Msg, 200)
 	return func() tea.Msg {
 		go func() {
-			err := installer.Download(version, func(done, total int64) {
+			err := installer.Download(version, dirURL, func(done, total int64) {
 				if total > 0 {
 					dlCh <- downloadProgressMsg{pct: float64(done) / float64(total)}
 				}
@@ -331,7 +333,8 @@ func (m Model) handleVersionInfoPanel(key string) (tea.Model, tea.Cmd) {
 				m.downloadProgress = 0
 				m.downloadVersion = ver
 				m.downloadError = ""
-				return m, startDownloadCmd(ver)
+				dirURL := m.xamppVersions[m.selectedVersion].DownloadURL
+				return m, startDownloadCmd(ver, dirURL)
 			}
 		}
 		m.showVersionInfoPanel = false
