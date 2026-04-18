@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"xampp-tui/internal/installer"
 	"xampp-tui/internal/xampp"
 
 	"github.com/charmbracelet/lipgloss"
@@ -398,13 +399,14 @@ func RenderVersionInfoPanel(downloadURL string, selectedButton int, alreadyDownl
 	label := lipgloss.NewStyle().Foreground(colorPanelFg).Bold(true)
 	value := lipgloss.NewStyle().Foreground(colorTitle)
 
+	destDir := installer.DownloadDir()
 	var info string
 	if alreadyDownloaded {
 		info = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("⬇ Already downloaded — ready to install") + "\n" +
-			label.Render("Destination:  ") + value.Render("./downloads/")
+			label.Render("Destination:  ") + value.Render(destDir)
 	} else {
 		info = label.Render("Download URL: ") + value.Render(downloadURL) + "\n" +
-			label.Render("Destination:  ") + value.Render("./downloads/")
+			label.Render("Destination:  ") + value.Render(destDir)
 	}
 
 	btn := lipgloss.NewStyle().

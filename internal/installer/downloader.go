@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"xampp-tui/internal/logger"
 	"xampp-tui/internal/platform"
 )
@@ -14,19 +15,40 @@ import (
 // bytes received so far and the total file size (-1 if unknown).
 type ProgressFunc func(downloaded, total int64)
 
+// minInstallerBytes is the minimum acceptable size for a downloaded XAMPP
+// installer. Files smaller than this are considered server-error responses
+// (HTML pages, redirects, etc.) and are removed automatically.
+const minInstallerBytes = 50 * 1024 * 1024 // 50 MB
+
 // downloadDir returns the absolute path used for storing downloaded installers.
 func downloadDir() string {
 	return filepath.Join(platform.AppDataDir(), "downloads")
 }
 
+// DownloadDir returns the absolute path used for storing downloaded installers.
+// Exported so that UI layers can display the destination to the user.
+func DownloadDir() string {
+	return downloadDir()
+}
+
+// removeFile attempts to delete a file, retrying a few times on Windows where
+// file-system locks can delay deletion briefly after a handle is closed.
+func removeFile(path string) {
+	for range 3 {
+		if os.Remove(path) == nil {
+			return
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+}
+
 // Download downloads the XAMPP installer for the given version.
 // dirURL is the SourceForge directory URL for the version (from FetchVersions);
 // when non-empty it is used to resolve the exact installer URL regardless of
-// the filename variant (e.g. -vs16-). Falls back to the platform-constructed
+// the filename variant (e.g. -VS16-). Falls back to the platform-constructed
 // URL when dirURL is empty.
-// Partial files are removed automatically if the download fails or the file
-// looks invalid. The saved file always uses InstallerFilename(version) so that
-// DownloadedVersions() can find it consistently.
+// Partial or invalid files are removed automatically. The saved file always
+// uses InstallerFilename(version) so that DownloadedVersions() can find it.
 func Download(version string, dirURL string, onProgress ProgressFunc) error {
 	dir := downloadDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -89,14 +111,13 @@ func Download(version string, dirURL string, onProgress ProgressFunc) error {
 	f.Close()
 
 	if writeErr != nil {
-		os.Remove(dest)
+		removeFile(dest)
 		return writeErr
 	}
 
-	// Sanity check: XAMPP installers are always > 50 MB.
-	if downloaded < 50*1024*1024 {
-		os.Remove(dest)
-		return fmt.Errorf("downloaded file too small (%d bytes) — possible server error", downloaded)
+	if downloaded < minInstallerBytes {
+		removeFile(dest)
+		return fmt.Errorf("downloaded file too small (%d bytes) — SourceForge may have returned an error page", downloaded)
 	}
 
 	logger.Write(fmt.Sprintf("download complete: %s (%d bytes)", dest, downloaded))
@@ -109,8 +130,8 @@ func Install(version string) error {
 }
 
 // DownloadedVersions returns the version strings of all XAMPP installers that
-// have been downloaded and are ready to install. It scans both the current
-// data directory and legacy locations from older builds.
+// have been downloaded and are ready to install. Files smaller than
+// minInstallerBytes are treated as stale/corrupt and removed automatically.
 func DownloadedVersions() []string {
 	prefix := platform.InstallerFilePrefix()
 	suffix := platform.InstallerFileSuffix()
@@ -131,6 +152,14 @@ func DownloadedVersions() []string {
 			if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
 				continue
 			}
+
+			// Validate size: stale files from failed downloads are tiny HTML pages.
+			info, err := e.Info()
+			if err != nil || info.Size() < minInstallerBytes {
+				removeFile(filepath.Join(dir, name))
+				continue
+			}
+
 			ver := strings.TrimSuffix(strings.TrimPrefix(name, prefix), suffix)
 			if ver != "" && !seen[ver] {
 				seen[ver] = true

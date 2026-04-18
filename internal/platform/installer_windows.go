@@ -34,16 +34,43 @@ func InstallerDownloadURL(version string) string {
 	)
 }
 
-// ExecuteInstaller runs the XAMPP .exe installer for version unattended.
-// The BitRock installer supports the same --mode unattended --prefix flags.
+// ExecuteInstaller runs the XAMPP .exe installer in unattended mode.
+//
+// On Windows the installer executable has a requireAdministrator manifest, so
+// it must run as Administrator. Direct exec.Command calls from a non-elevated
+// process cannot capture the exit code of an elevated child (Windows launches
+// it through the UAC broker, making it a sibling rather than a child).
+//
+// We work around this by delegating to PowerShell Start-Process with
+// -Verb RunAs -Wait, which:
+//   1. Triggers the UAC elevation dialog (user must accept).
+//   2. Waits for the installer to finish.
+//   3. Captures and forwards the exit code so we can detect failures.
 func ExecuteInstaller(runFile, targetDir string, onProgress func(string)) error {
 	if onProgress != nil {
-		onProgress(fmt.Sprintf("Installing to %s …", targetDir))
+		onProgress(fmt.Sprintf(
+			"Installing to %s …\n\nA UAC (User Account Control) prompt will appear.\nPlease accept it to allow the installation to proceed.",
+			targetDir,
+		))
 	}
-	cmd := exec.Command(runFile, "--mode", "unattended", "--prefix", targetDir)
+
+	// Escape single quotes in paths for PowerShell string literals.
+	psFile := strings.ReplaceAll(runFile, "'", "''")
+	psDir := strings.ReplaceAll(targetDir, "'", "''")
+
+	psScript := fmt.Sprintf(
+		"$p = Start-Process -FilePath '%s' -ArgumentList '--mode','unattended','--prefix','%s' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
+		psFile, psDir,
+	)
+
+	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-NoProfile", "-Command", psScript)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("installer failed: %s: %w", strings.TrimSpace(string(out)), err)
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = "installation failed — make sure you accepted the UAC prompt and that you have administrator rights"
+		}
+		return fmt.Errorf("installer: %s: %w", msg, err)
 	}
 	return nil
 }
