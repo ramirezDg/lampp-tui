@@ -26,38 +26,54 @@ var (
 	reDownloads   = regexp.MustCompile(`<span class="count">([\d,]+)</span>`)
 )
 
-// reDirLink is built at init time using the platform-specific path prefix so
-// that the same binary always fetches from the right SourceForge category.
+// installerFileExt returns ".exe" (Windows) or ".run" (Linux) by inspecting
+// the platform suffix. Called once at package init.
+func installerFileExt() string {
+	s := platform.InstallerFileSuffix()
+	if i := strings.LastIndexByte(s, '.'); i >= 0 {
+		return s[i:]
+	}
+	return ""
+}
+
+// reDirLink matches SourceForge version-directory links in the listing page.
+// Handles both relative (/projects/...) and absolute (https://sourceforge.net/projects/...) hrefs,
+// since SourceForge serves either format depending on the page.
 var reDirLink = regexp.MustCompile(
-	`href="(/projects/xampp/files/` + platform.VersionDirPrefix() + `/[\d][^"]+/)"`,
+	`href="(?:https://sourceforge\.net)?(/projects/xampp/files/` +
+		platform.VersionDirPrefix() + `/[\d][^"]+/)"`,
 )
 
-// reExeDownload matches the SourceForge file-listing link for any installer
-// executable inside a version directory (handles naming variants like vs16).
-var reExeDownload = regexp.MustCompile(
-	`href="(/projects/xampp/files/` + platform.VersionDirPrefix() + `/[^"]+installer\.exe/download)"`,
+// reInstallerDownload matches the SourceForge download link for the platform's
+// standard (non-portable) XAMPP installer inside a version directory page.
+//   - Handles both absolute and relative hrefs.
+//   - Uses InstallerFilePrefix() to exclude "portable" variants.
+//   - Uses installerFileExt() so it matches .exe on Windows and .run on Linux.
+var reInstallerDownload = regexp.MustCompile(
+	`href="(?:https://sourceforge\.net)?(/projects/xampp/files/` +
+		platform.VersionDirPrefix() + `/[^"]+/` +
+		regexp.QuoteMeta(platform.InstallerFilePrefix()) +
+		`[^"]+installer` +
+		regexp.QuoteMeta(installerFileExt()) +
+		`/download)"`,
 )
 
-// sfClient is a shared HTTP client with a browser-like User-Agent so that
-// SourceForge serves proper redirects instead of its bot-detection page.
+// sfClient is a shared HTTP client used for all SourceForge requests.
+// No custom User-Agent is set: Go's default UA works fine for the file listing
+// pages and avoids triggering SourceForge's browser-specific responses
+// (e.g. brotli encoding or JavaScript-rendered pages).
 var sfClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
 func sfGet(url string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent",
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "+
-			"(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-	return sfClient.Do(req)
+	return sfClient.Get(url)
 }
 
 // ResolveInstallerURL fetches a SourceForge version directory page and returns
-// the full download URL of the installer executable found there.
-// This handles naming variants (e.g. -vs16-) that differ across XAMPP releases.
+// the full download URL of the platform's standard installer found there.
+// This resolves naming variants (e.g. -VS16-) that differ across releases,
+// and selects the correct file type per platform (.exe or .run).
 func ResolveInstallerURL(dirURL string) (string, error) {
 	resp, err := sfGet(dirURL)
 	if err != nil {
@@ -70,9 +86,12 @@ func ResolveInstallerURL(dirURL string) (string, error) {
 		return "", fmt.Errorf("reading directory page: %w", err)
 	}
 
-	m := reExeDownload.FindSubmatch(body)
+	m := reInstallerDownload.FindSubmatch(body)
 	if m == nil {
-		return "", fmt.Errorf("installer .exe not found in directory listing — SourceForge page format may have changed")
+		return "", fmt.Errorf(
+			"installer not found in directory listing (prefix=%s ext=%s) — SourceForge page format may have changed",
+			platform.InstallerFilePrefix(), installerFileExt(),
+		)
 	}
 	return "https://sourceforge.net" + string(m[1]), nil
 }
